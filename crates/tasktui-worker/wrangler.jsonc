@@ -10,6 +10,11 @@
   "build": {
     "command": "worker-build --release"
   },
+  // La página web (web/) se sirve como archivos estáticos; /api/* va al Worker.
+  "assets": {
+    "directory": "./web",
+    "run_worker_first": ["/api/*"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

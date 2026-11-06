@@ -147,6 +147,28 @@ una sesión no interactiva la cancela sin avisar).
 Prueba local: `npx wrangler d1 migrations apply tasktui --local`, crea
 `.dev.vars` con `API_TOKEN=...` y `npx wrangler dev`.
 
+## Página web (celular y cualquier navegador)
+
+El mismo Worker sirve una página en la raíz del dominio (por ejemplo
+`https://tasks.madara.dev`). La primera vez pide el token del servidor y lo
+guarda solo en ese navegador; «Cerrar sesión» en el menú `⋯` lo borra.
+
+- Vistas Hoy, Próximos, Inbox y Proyectos (con etiquetas), y búsqueda.
+- Captura rápida con la misma sintaxis que la TUI. Al escribir `+` o `#`
+  sugiere proyectos y etiquetas (toca la sugerencia o pulsa Tab). Dentro de un
+  proyecto, las tareas nuevas van a ese proyecto.
+- Toca el círculo para completar (con «Deshacer», también en las recurrentes).
+  Toca la tarea para ver el detalle: cambiar fecha con botones o con captura
+  rápida, editar la descripción, añadir notas con fecha y eliminar.
+- Sin conexión muestra la última copia de cada vista (solo lectura).
+- **iPhone:** ábrela en Safari → Compartir → «Agregar a pantalla de inicio».
+  Se abre como app, sin barra del navegador.
+
+No tiene paso de compilación: son archivos estáticos en
+`crates/tasktui-worker/web/` (HTML, CSS y JavaScript sin dependencias) que se
+publican con `wrangler deploy` (`assets` en `wrangler.jsonc`; `/api/*` pasa
+primero por el Worker). Las cabeceras de seguridad (CSP) están en `web/_headers`.
+
 ## Una tarea
 
 | Campo | Para qué |
@@ -245,7 +267,8 @@ servidor.
 | `views.rs` | vistas Inbox/Hoy/Próximos/Todas/Proyecto/Etiqueta |
 | `dto.rs` | la tarea en JSON: contrato de `--json` y de la API |
 
-**`crates/tasktui-worker`**: el servidor (API sobre Cloudflare Workers + D1, ver arriba).
+**`crates/tasktui-worker`**: el servidor (API sobre Cloudflare Workers + D1, ver arriba)
+y la página web en `web/` (`app.js` cliente de la API, `sw.js` para abrir sin conexión).
 
 **`crates/tasktui`**: la TUI y la CLI.
 
@@ -281,8 +304,9 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** TUI/CLI en modo remoto, con caché sin conexión.
 - **Hecho:** `tasktui export` a `.md` como respaldo.
 - **Hecho:** descripción, notas con fecha, hora y fecha límite; CLI y API en inglés.
-- **Siguiente:** página web instalable (PWA) para el celular y cualquier
-  navegador, con avisos push.
+- **Hecho:** página web instalable (PWA) para el celular y cualquier navegador.
+- **Siguiente:** avisos push en la página web; preparar el repo público
+  (LICENSE, guía para montar tu propia instancia).
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.
 - **Fase 4:** notificaciones en macOS/iPhone (puente opcional con Recordatorios

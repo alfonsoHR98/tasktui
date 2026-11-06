@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>tasktui</title>
+  <meta name="description" content="Tus tareas de tasktui desde cualquier navegador">
+  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tareas">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <!-- Entrada: se pide el token una vez y se guarda en este navegador. -->
+  <section id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <img src="/icon.svg" alt="" width="56" height="56">
+      <h1>tasktui</h1>
+      <p>Escribe el token de tu servidor. Se guarda solo en este navegador.</p>
+      <label for="token" class="sr-only">Token</label>
+      <input id="token" type="password" autocomplete="current-password" placeholder="Token" required>
+      <button type="submit" class="primary">Entrar</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <header class="top">
+      <div class="top-row">
+        <h1 id="title">Hoy</h1>
+        <div class="top-actions">
+          <button id="btn-search" class="icon-btn" aria-label="Buscar">⌕</button>
+          <button id="btn-refresh" class="icon-btn" aria-label="Actualizar">↻</button>
+          <button id="btn-menu" class="icon-btn" aria-label="Más opciones">⋯</button>
+        </div>
+      </div>
+      <div id="search-row" class="search-row" hidden>
+        <input id="search" type="search" placeholder="Buscar en todas las tareas" autocomplete="off">
+      </div>
+      <nav class="tabs" aria-label="Vistas">
+        <button data-view="today" class="tab">Hoy</button>
+        <button data-view="upcoming" class="tab">Próximos</button>
+        <button data-view="inbox" class="tab">Inbox</button>
+        <button data-view="projects" class="tab">Proyectos</button>
+      </nav>
+      <p id="notice" class="notice" hidden></p>
+    </header>
+
+    <main id="list" class="list" aria-live="polite"></main>
+
+    <form id="add-form" class="add" autocomplete="off">
+      <div id="sugg" class="sugg" hidden></div>
+      <div class="add-row">
+        <input id="add-input" enterkeyhint="send" placeholder="Nueva tarea">
+        <button type="submit" class="primary add-btn" aria-label="Añadir">＋</button>
+      </div>
+      <p id="add-hint" class="add-hint"></p>
+    </form>
+  </div>
+
+  <!-- Detalle de una tarea. -->
+  <dialog id="detail" class="sheet">
+    <form method="dialog" class="sheet-head">
+      <button class="icon-btn" aria-label="Cerrar">✕</button>
+    </form>
+    <div id="detail-body"></div>
+  </dialog>
+
+  <!-- Menú: ver completadas, cerrar sesión. -->
+  <dialog id="menu" class="sheet small">
+    <form method="dialog" class="sheet-head">
+      <button class="icon-btn" aria-label="Cerrar">✕</button>
+    </form>
+    <div class="menu-body">
+      <label class="switch"><input id="show-done" type="checkbox"> Mostrar completadas</label>
+      <p class="muted" id="server-info"></p>
+      <button id="btn-logout" class="danger">Cerrar sesión en este navegador</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

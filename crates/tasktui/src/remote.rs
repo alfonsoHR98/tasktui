@@ -22,8 +22,10 @@ use crate::model::Task;
 /// Lo que devuelve `GET /api/export`.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Export {
-    pub proyectos: Vec<String>,
-    pub tareas: Vec<TaskDto>,
+    #[serde(alias = "proyectos")]
+    pub projects: Vec<String>,
+    #[serde(alias = "tareas")]
+    pub tasks: Vec<TaskDto>,
 }
 
 pub struct Client {
@@ -80,7 +82,7 @@ impl Client {
         let v: Value = resp.into_body().read_json().unwrap_or(Value::Null);
         match status {
             200..=299 => Ok(v),
-            401 => bail!("El servidor rechazó el token. Vuelve a conectar con `tasktui servidor conectar`."),
+            401 => bail!("El servidor rechazó el token. Vuelve a conectar con `tasktui server connect`."),
             _ => bail!(
                 "{}",
                 v.get("error").and_then(Value::as_str).map(String::from).unwrap_or(format!("Error {status} del servidor"))
@@ -114,9 +116,9 @@ impl Client {
     }
 
     /// Sube tareas conservando sus ids (no borra nada en el servidor).
-    pub fn import(&self, proyectos: &[String], tareas: &[TaskDto]) -> Result<u64> {
-        let v = self.post("import", Some(json!({ "proyectos": proyectos, "tareas": tareas })))?;
-        Ok(v.get("importadas").and_then(Value::as_u64).unwrap_or(0))
+    pub fn import(&self, projects: &[String], tasks: &[TaskDto]) -> Result<u64> {
+        let v = self.post("import", Some(json!({ "projects": projects, "tasks": tasks })))?;
+        Ok(v.get("imported").or_else(|| v.get("importadas")).and_then(Value::as_u64).unwrap_or(0))
     }
 }
 
@@ -172,8 +174,8 @@ impl RemoteStore {
     }
 
     fn set(&mut self, ex: Export) {
-        self.tasks = ex.tareas.iter().map(Task::from).collect();
-        self.projects = ex.proyectos;
+        self.tasks = ex.tasks.iter().map(Task::from).collect();
+        self.projects = ex.projects;
     }
 
     pub fn reload(&mut self) -> Result<()> {
@@ -233,7 +235,7 @@ impl RemoteStore {
     pub fn toggle(&mut self, id: &str) -> Result<bool> {
         let v = self.client.post(&format!("tasks/{id}/done"), None)?;
         self.reload()?;
-        Ok(v.get("completada").and_then(Value::as_bool).unwrap_or(false))
+        Ok(v.get("completed").or_else(|| v.get("completada")).and_then(Value::as_bool).unwrap_or(false))
     }
 
     pub fn delete(&mut self, id: &str) -> Result<()> {
@@ -245,7 +247,7 @@ impl RemoteStore {
         if text.trim().is_empty() {
             bail!("La nota está vacía");
         }
-        self.client.post(&format!("tasks/{id}/notes"), Some(json!({ "texto": text })))?;
+        self.client.post(&format!("tasks/{id}/notes"), Some(json!({ "text": text })))?;
         self.reload()
     }
 

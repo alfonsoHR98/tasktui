@@ -20,7 +20,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 
 use crate::config;
 use crate::model::Task;
@@ -38,6 +38,8 @@ pub struct Wanted {
     pub task_id: String,
     pub title: String,
     pub due: NaiveDate,
+    /// Con hora, el recordatorio avisa a esa hora exacta.
+    pub time: Option<NaiveTime>,
     /// Prioridad de EventKit: 0 ninguna, 1 alta, 5 media, 9 baja.
     pub priority: usize,
     pub notes: String,
@@ -49,6 +51,7 @@ pub struct Existing {
     pub ek_id: String,
     pub title: String,
     pub due: Option<NaiveDate>,
+    pub time: Option<NaiveTime>,
     pub priority: usize,
     pub notes: String,
     pub completed: bool,
@@ -59,6 +62,7 @@ impl Existing {
         !self.completed
             && self.title == w.title
             && self.due == Some(w.due)
+            && self.time == w.time
             && self.priority == w.priority
             && self.notes == w.notes
     }
@@ -95,17 +99,20 @@ pub fn import_task(e: &Existing) -> (Task, String) {
         p => p,
     };
     t.due = e.due.or(q.due);
+    t.time = e.time.or(q.time);
+    t.deadline = q.deadline;
     t.recurrence = q.recurrence;
     if t.recurrence.is_some() && t.due.is_none() {
         t.due = t.recurrence.as_ref().map(|r| r.first(today()));
     }
-    t.notes = e
+    // Las notas del recordatorio son la descripción de la tarea.
+    t.description = e
         .notes
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
-        .map(String::from)
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
     (t, q.project.unwrap_or_else(|| INBOX.into()))
 }
 
@@ -113,12 +120,25 @@ pub fn wanted(t: &Task) -> Option<Wanted> {
     if t.done {
         return None;
     }
+    // Notas del recordatorio: proyecto, límite, descripción y comentarios.
     let mut notes = vec![format!("📁 {}", t.project)];
-    notes.extend(t.notes.iter().cloned());
+    if let Some(d) = t.deadline {
+        notes.push(format!("🎯 Límite: {}", crate::dates::long(d, today())));
+    }
+    if !t.description.trim().is_empty() {
+        notes.push(t.description.trim().to_string());
+    }
+    for n in &t.notes {
+        notes.push(match n.date {
+            Some(d) => format!("• {}: {}", crate::dates::rel(d, today()), n.text),
+            None => format!("• {}", n.text),
+        });
+    }
     Some(Wanted {
         task_id: t.id.clone()?,
         title: t.text.clone(),
         due: t.due?,
+        time: t.time,
         priority: ek_priority(t.priority),
         notes: notes.join("\n"),
     })
@@ -220,9 +240,22 @@ pub struct Report {
     pub removed: usize,
 }
 
+/// ¿Se está usando una configuración temporal (`TASKTUI_DIR` o
+/// `TASKTUI_SERVER`, p. ej. en pruebas)? Entonces no se toca Recordatorios:
+/// la lista y la relación tarea ↔ recordatorio son de tu configuración normal.
+fn env_override() -> bool {
+    std::env::var_os("TASKTUI_DIR").is_some() || std::env::var_os("TASKTUI_SERVER").is_some()
+}
+
 /// Sincroniza. Se serializa con un candado para que dos `sync` simultáneos
 /// (TUI + CLI) no creen duplicados.
 pub fn sync(store: &mut Store) -> Result<Report> {
+    if env_override() {
+        anyhow::bail!(
+            "Con TASKTUI_DIR o TASKTUI_SERVER definidos no se sincroniza Recordatorios \
+             (es solo para tu configuración normal)"
+        );
+    }
     let lock_path = state_path().with_extension("lock");
     fs::create_dir_all(lock_path.parent().unwrap())?;
     let lock = fs::File::create(&lock_path)?;
@@ -358,7 +391,7 @@ unsafe extern "C" {
 /// Lanza `tasktui sync` en segundo plano si el espejo está activado.
 /// No bloquea ni falla: si algo sale mal, el siguiente sync lo arregla.
 pub fn sync_in_background() {
-    if cfg!(test) || !config::reminders_enabled() {
+    if cfg!(test) || env_override() || !config::reminders_enabled() {
         return;
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -379,13 +412,13 @@ mod backend {
 
     use anyhow::{anyhow, bail, Result};
     use block2::RcBlock;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, NaiveTime};
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_event_kit::{
-        EKAuthorizationStatus, EKCalendar, EKEntityType, EKEventStore, EKReminder,
+        EKAlarm, EKAuthorizationStatus, EKCalendar, EKEntityType, EKEventStore, EKReminder,
     };
-    use objc2_foundation::{NSArray, NSDateComponents, NSError, NSString};
+    use objc2_foundation::{NSArray, NSCalendar, NSDateComponentUndefined, NSDateComponents, NSError, NSString};
 
     use super::{Existing, Wanted, LIST};
 
@@ -410,12 +443,25 @@ mod backend {
         NaiveDate::from_ymd_opt(c.year() as i32, c.month() as u32, c.day() as u32)
     }
 
-    fn components(d: NaiveDate) -> Retained<NSDateComponents> {
-        use chrono::Datelike;
+    fn time_of(c: &NSDateComponents) -> Option<NaiveTime> {
+        if c.hour() == NSDateComponentUndefined {
+            return None;
+        }
+        let m = if c.minute() == NSDateComponentUndefined { 0 } else { c.minute() };
+        NaiveTime::from_hms_opt(c.hour() as u32, m as u32, 0)
+    }
+
+    /// Fecha de todo el día, o con hora si la hay.
+    fn components(d: NaiveDate, t: Option<NaiveTime>) -> Retained<NSDateComponents> {
+        use chrono::{Datelike, Timelike};
         let c = NSDateComponents::new();
         c.setYear(d.year() as isize);
         c.setMonth(d.month() as isize);
         c.setDay(d.day() as isize);
+        if let Some(t) = t {
+            c.setHour(t.hour() as isize);
+            c.setMinute(t.minute() as isize);
+        }
         c
     }
 
@@ -490,6 +536,7 @@ mod backend {
                         ek_id: r.calendarItemIdentifier().to_string(),
                         title: r.title().to_string(),
                         due: r.dueDateComponents().as_deref().and_then(date_of),
+                        time: r.dueDateComponents().as_deref().and_then(time_of),
                         priority: r.priority(),
                         notes: r.notes().map(|n| n.to_string()).unwrap_or_default(),
                         completed: r.isCompleted(),
@@ -506,7 +553,16 @@ mod backend {
         fn fill(r: &EKReminder, w: &Wanted) {
             unsafe {
                 r.setTitle(Some(&NSString::from_str(&w.title)));
-                r.setDueDateComponents(Some(&components(w.due)));
+                let comps = components(w.due, w.time);
+                r.setDueDateComponents(Some(&comps));
+                // Con hora, una alarma a esa hora; sin hora, Recordatorios avisa
+                // a la hora general de «todo el día».
+                r.setAlarms(None);
+                if w.time.is_some() {
+                    if let Some(at) = NSCalendar::currentCalendar().dateFromComponents(&comps) {
+                        r.addAlarm(&EKAlarm::alarmWithAbsoluteDate(&at));
+                    }
+                }
                 r.setPriority(w.priority);
                 r.setNotes(Some(&NSString::from_str(&w.notes)));
                 if r.isCompleted() {
@@ -579,7 +635,7 @@ mod tests {
     }
 
     fn w(id: &str, title: &str) -> Wanted {
-        Wanted { task_id: id.into(), title: title.into(), due: d("2026-11-06"), priority: 0, notes: "📁 Inbox".into() }
+        Wanted { task_id: id.into(), title: title.into(), due: d("2026-11-06"), time: None, priority: 0, notes: "📁 Inbox".into() }
     }
 
     fn e(ek: &str, w: &Wanted) -> Existing {
@@ -587,6 +643,7 @@ mod tests {
             ek_id: ek.into(),
             title: w.title.clone(),
             due: Some(w.due),
+            time: w.time,
             priority: w.priority,
             notes: w.notes.clone(),
             completed: false,
@@ -650,7 +707,7 @@ mod tests {
         assert_eq!(t.labels, vec!["super"]);
         assert_eq!(t.priority, 1);
         assert_eq!(t.due, None);
-        assert_eq!(t.notes, vec!["deslactosada", "2 litros"]);
+        assert_eq!(t.description, "deslactosada\n2 litros");
         // La fecha y prioridad del recordatorio mandan.
         r.title = "Pagar luz mañana".into();
         r.due = Some(d("2026-12-01"));

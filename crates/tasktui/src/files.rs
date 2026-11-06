@@ -4,8 +4,9 @@
 //! - Los encabezados `##` dentro del archivo son secciones.
 //! - Las líneas que no son tareas se conservan intactas, igual que las tareas
 //!   que no se modifican (no se reformatea lo que escribiste en Obsidian).
-//! - Las líneas con más sangría justo debajo de una tarea son sus notas: se
-//!   mueven y se borran junto con ella.
+//! - Las líneas con más sangría justo debajo de una tarea son su bloque: el
+//!   texto sin viñeta es la descripción y las viñetas (`- 2026-11-06: texto`)
+//!   son notas. El bloque se mueve y se borra junto con la tarea.
 
 use std::collections::HashSet;
 use std::fs;
@@ -13,9 +14,10 @@ use std::hash::{BuildHasher, Hasher, RandomState};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
+use chrono::NaiveDate;
 
 use crate::markdown;
-use crate::model::{Completion, Task};
+use crate::model::{Completion, Note, Task};
 use crate::today;
 
 pub use tasktui_core::INBOX;
@@ -96,10 +98,26 @@ fn indent_width(s: &str) -> usize {
         .sum()
 }
 
-/// Texto de una línea de nota, sin sangría ni viñeta.
-fn note_text(s: &str) -> String {
+/// Línea del bloque de una tarea: nota (con viñeta) o descripción (sin ella).
+enum BlockLine {
+    Note(Note),
+    Desc(String),
+}
+
+fn block_line(s: &str) -> BlockLine {
     let t = s.trim();
-    t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).unwrap_or(t).to_string()
+    match t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")) {
+        Some(rest) => {
+            let dated = rest
+                .split_once(": ")
+                .and_then(|(d, txt)| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok().map(|d| (d, txt)));
+            BlockLine::Note(match dated {
+                Some((d, txt)) => Note::new(txt, Some(d)),
+                None => Note::new(rest, None),
+            })
+        }
+        None => BlockLine::Desc(t.to_string()),
+    }
 }
 
 /// ¿La línea `s` es nota de una tarea con sangría `task_indent`?
@@ -108,8 +126,22 @@ fn is_note_of(s: &str, task_indent: &str) -> bool {
 }
 
 /// Línea de nota tal como se escribe en disco, bajo una tarea con `indent`.
-pub fn note_line(indent: &str, text: &str) -> String {
-    format!("{indent}    - {}", text.trim())
+pub fn note_line(indent: &str, n: &Note) -> String {
+    match n.date {
+        Some(d) => format!("{indent}    - {d}: {}", n.text.trim()),
+        None => format!("{indent}    - {}", n.text.trim()),
+    }
+}
+
+/// El bloque completo bajo la tarea: descripción y luego notas.
+pub fn block_lines(t: &Task) -> Vec<String> {
+    t.description
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| format!("{}    {l}", t.indent))
+        .chain(t.notes.iter().map(|n| note_line(&t.indent, n)))
+        .collect()
 }
 
 fn heading(s: &str) -> Option<(usize, String)> {
@@ -189,7 +221,15 @@ impl FileStore {
             if let Some(oi) = owner {
                 if let Line::Task { task, .. } = &mut lines[oi] {
                     if is_note_of(raw, &task.indent) {
-                        task.notes.push(note_text(raw));
+                        match block_line(raw) {
+                            BlockLine::Note(n) => task.notes.push(n),
+                            BlockLine::Desc(d) => {
+                                if !task.description.is_empty() {
+                                    task.description.push('\n');
+                                }
+                                task.description.push_str(&d);
+                            }
+                        }
                         lines.push(Line::Other(raw.to_string()));
                         continue;
                     }
@@ -335,11 +375,7 @@ impl FileStore {
             .rposition(|l| matches!(l, Line::Task { .. }))
             .map(|p| self.block_end((di, p)))
             .unwrap_or(self.docs[di].lines.len());
-        let notes: Vec<Line> = task
-            .notes
-            .iter()
-            .map(|n| Line::Other(note_line(&task.indent, n)))
-            .collect();
+        let notes: Vec<Line> = block_lines(&task).into_iter().map(Line::Other).collect();
         let doc = &mut self.docs[di];
         doc.lines.insert(pos, Line::Task { task, raw: None });
         for (k, n) in notes.into_iter().enumerate() {
@@ -362,7 +398,8 @@ impl FileStore {
         let pos = self.find_or_err(id)?;
         let end = self.block_end(pos);
         let indent = self.task_at(pos).unwrap().indent.clone();
-        self.docs[pos.0].lines.insert(end, Line::Other(note_line(&indent, text)));
+        let note = Note::new(text, Some(today()));
+        self.docs[pos.0].lines.insert(end, Line::Other(note_line(&indent, &note)));
         self.write(pos.0)
     }
 
@@ -384,11 +421,18 @@ impl FileStore {
     pub fn update(&mut self, id: &str, f: impl FnOnce(&mut Task)) -> Result<()> {
         self.reload()?;
         let pos = self.find_or_err(id)?;
-        let mut t = self.task_at(pos).cloned().unwrap();
+        let before = self.task_at(pos).cloned().unwrap();
+        let mut t = before.clone();
         f(&mut t);
         let same = t.project.to_lowercase() == self.docs[pos.0].project.to_lowercase();
         if same {
             t.project = self.docs[pos.0].project.clone();
+            // Si cambió la descripción o las notas, se reescribe el bloque.
+            if t.description != before.description || t.notes != before.notes {
+                let end = self.block_end(pos);
+                let new: Vec<Line> = block_lines(&t).into_iter().map(Line::Other).collect();
+                self.docs[pos.0].lines.splice(pos.1 + 1..end, new);
+            }
             self.set_task(pos, t);
             return self.write(pos.0);
         }
@@ -487,8 +531,8 @@ pub fn export(store: &crate::store::Store, dir: &Path) -> Result<usize> {
             for t in group {
                 out.push_str(&markdown::render_line(t));
                 out.push('\n');
-                for n in &t.notes {
-                    out.push_str(&note_line(&t.indent, n));
+                for l in block_lines(t) {
+                    out.push_str(&l);
                     out.push('\n');
                 }
             }
@@ -570,13 +614,20 @@ pub mod tests {
         .unwrap();
         s.reload().unwrap();
         let uno = s.task_at(s.find("aaaaa").unwrap()).unwrap();
-        assert_eq!(uno.notes, vec!["nota 1", "texto suelto"]);
+        assert_eq!(uno.notes, vec![Note::new("nota 1", None)]);
+        assert_eq!(uno.description, "texto suelto");
         s.add_note("bbbbb", "nota de dos").unwrap();
         s.update("aaaaa", |t| t.project = "Otro".into()).unwrap();
         let inbox = fs::read_to_string(s.dir.join("Inbox.md")).unwrap();
-        assert_eq!(inbox, "# Inbox\n\n- [ ] Dos 🆔 bbbbb\n    - nota de dos\n\nFin\n");
+        assert_eq!(inbox, format!("# Inbox\n\n- [ ] Dos 🆔 bbbbb\n    - {}: nota de dos\n\nFin\n", today()));
         let otro = fs::read_to_string(s.dir.join("Otro.md")).unwrap();
-        assert!(otro.contains("- [ ] Uno 🆔 aaaaa\n    - nota 1\n    - texto suelto\n"), "{otro}");
+        assert!(otro.contains("- [ ] Uno 🆔 aaaaa\n    texto suelto\n    - nota 1\n"), "{otro}");
+        // Cambiar la descripción reescribe el bloque y conserva las notas.
+        s.update("aaaaa", |t| t.description = "línea 1\nlínea 2".into()).unwrap();
+        let otro = fs::read_to_string(s.dir.join("Otro.md")).unwrap();
+        assert!(otro.contains("- [ ] Uno 🆔 aaaaa\n    línea 1\n    línea 2\n    - nota 1\n"), "{otro}");
+        let uno = s.task_at(s.find("aaaaa").unwrap()).unwrap();
+        assert_eq!(uno.description, "línea 1\nlínea 2");
         s.delete("aaaaa").unwrap();
         assert!(!fs::read_to_string(s.dir.join("Otro.md")).unwrap().contains("nota"));
         let _ = fs::remove_dir_all(&s.dir);

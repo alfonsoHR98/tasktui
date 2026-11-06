@@ -13,12 +13,15 @@ struct Row {
     text: String,
     done: f64,
     due: Option<String>,
+    time: Option<String>,
+    deadline: Option<String>,
     done_date: Option<String>,
     priority: f64,
     labels: String,
     recurrence: Option<String>,
     project: String,
     section: Option<String>,
+    description: String,
     notes: String,
     position: f64,
 }
@@ -31,6 +34,8 @@ impl Row {
             text: self.text,
             done: self.done != 0.0,
             due: date(self.due),
+            time: self.time.and_then(|t| chrono::NaiveTime::parse_from_str(&t, "%H:%M").ok()),
+            deadline: date(self.deadline),
             done_date: date(self.done_date),
             priority: self.priority as u8,
             labels: serde_json::from_str(&self.labels).unwrap_or_default(),
@@ -38,6 +43,7 @@ impl Row {
             recurrence_rule: self.recurrence,
             project: self.project,
             section: self.section,
+            description: self.description,
             notes: serde_json::from_str(&self.notes).unwrap_or_default(),
         };
         (Task::from(&dto), self.position)
@@ -160,8 +166,9 @@ impl Db {
             &self.db,
             "INSERT OR REPLACE INTO tasks
                (id, text, done, due, done_date, priority, labels, recurrence,
-                project, section, notes, position, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                project, section, notes, position, created_at, updated_at,
+                description, time, deadline)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             id,
             d.text,
             d.done as i32,
@@ -175,7 +182,10 @@ impl Db {
             serde_json::to_string(&d.notes).unwrap_or_default(),
             position,
             created,
-            self.now
+            self.now,
+            d.description,
+            d.time.map(|t| t.format("%H:%M").to_string()),
+            d.deadline.map(|x| x.to_string())
         )?
         .run()
         .await?;

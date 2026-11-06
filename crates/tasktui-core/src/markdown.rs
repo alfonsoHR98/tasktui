@@ -1,21 +1,26 @@
 //! Lectura/escritura de una línea de tarea en formato Obsidian Tasks:
 //!
-//! `- [ ] Pagar luz #casa ⏫ 🔁 every month 📅 2026-11-06 🆔 a1b2c`
+//! `- [ ] Pagar luz #casa ⏫ 🔁 every month 📅 2026-11-06 ⏰ 18:00 🎯 2026-11-20 🆔 a1b2c`
+//!
+//! `⏰` (hora) y `🎯` (fecha límite) son propios de tasktui: Obsidian Tasks no
+//! los interpreta, pero los conserva como texto.
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 
 use crate::model::{Recurrence, Task};
 
 const DUE: &str = "📅";
 const DONE: &str = "✅";
 const ID: &str = "🆔";
+const TIME: &str = "⏰";
+const DEADLINE: &str = "🎯";
 const REC: &str = "🔁";
 const PRIO: [(&str, u8); 4] = [("🔺", 1), ("⏫", 2), ("🔼", 3), ("🔽", 4)];
 /// Otros campos de Obsidian Tasks: se conservan pero no se interpretan.
 const OTHER: [&str; 6] = ["⏳", "🛫", "➕", "❌", "🏁", "⛔"];
 
 fn markers() -> impl Iterator<Item = &'static str> {
-    [DUE, DONE, ID, REC]
+    [DUE, DONE, ID, REC, TIME, DEADLINE]
         .into_iter()
         .chain(PRIO.iter().map(|(m, _)| *m))
         .chain(OTHER)
@@ -93,6 +98,20 @@ pub fn parse_line(line: &str) -> Option<Task> {
                         None => t.extra.push(format!("{DONE} {v}")),
                     }
                 }
+                TIME => {
+                    let v = value(&mut i);
+                    match NaiveTime::parse_from_str(&v, "%H:%M") {
+                        Ok(h) => t.time = Some(h),
+                        Err(_) => t.extra.push(format!("{TIME} {v}")),
+                    }
+                }
+                DEADLINE => {
+                    let v = value(&mut i);
+                    match parse_date(&v) {
+                        Some(d) => t.deadline = Some(d),
+                        None => t.extra.push(format!("{DEADLINE} {v}")),
+                    }
+                }
                 ID => {
                     let v = value(&mut i);
                     if !v.is_empty() {
@@ -161,6 +180,12 @@ pub fn render_line(t: &Task) -> String {
     if let Some(d) = t.due {
         push(&format!("{DUE} {d}"));
     }
+    if let Some(h) = t.time {
+        push(&format!("{TIME} {}", h.format("%H:%M")));
+    }
+    if let Some(d) = t.deadline {
+        push(&format!("{DEADLINE} {d}"));
+    }
     if let Some(id) = &t.id {
         push(&format!("{ID} {id}"));
     }
@@ -184,6 +209,16 @@ mod tests {
         assert_eq!(t.due.unwrap().to_string(), "2026-11-06");
         assert_eq!(t.id.as_deref(), Some("a1b2c"));
         assert_eq!(t.indent, "  ");
+        assert_eq!(render_line(&t), line);
+    }
+
+    #[test]
+    fn hora_y_limite() {
+        let line = "- [ ] Entregar ⏫ 📅 2026-11-06 ⏰ 18:00 🎯 2026-11-20 🆔 a1b2c";
+        let t = parse_line(line).unwrap();
+        assert_eq!(t.time.unwrap().format("%H:%M").to_string(), "18:00");
+        assert_eq!(t.deadline.unwrap().to_string(), "2026-11-20");
+        assert_eq!(t.text, "Entregar");
         assert_eq!(render_line(&t), line);
     }
 

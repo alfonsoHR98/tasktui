@@ -37,11 +37,11 @@ Dos modos, con la misma TUI y la misma CLI:
 - **Local**: una carpeta de archivos `.md`.
 
 ```sh
-tasktui servidor conectar https://tasks.ejemplo.com   # pide el token; activa el modo remoto
-tasktui servidor                                      # muestra el modo y si el servidor responde
-tasktui servidor local | remoto                       # cambiar de modo
-tasktui servidor subir                                # sube los .md locales al servidor (conserva ids)
-tasktui exportar ~/Respaldo/Tareas                    # respaldo en .md desde cualquier modo
+tasktui server connect https://tasks.ejemplo.com   # pide el token; activa el modo remoto
+tasktui server                                     # muestra el modo y si el servidor responde
+tasktui server local | remote                      # cambiar de modo
+tasktui server push                                # sube los .md locales al servidor (conserva ids)
+tasktui export ~/Respaldo/Tareas                   # respaldo en .md desde cualquier modo
 ```
 
 En modo remoto cada cambio va directo al servidor. La última lectura queda en
@@ -67,11 +67,15 @@ tiene prioridad (útil para pruebas).
 |---|---|
 | Proyecto | un archivo `.md` (`Trabajo/Cliente.md` → proyecto `Trabajo/Cliente`) |
 | Sección | encabezado `##` dentro del archivo |
-| Tarea | `- [ ] Pagar luz #casa 🔺 🔁 every month 📅 2026-11-05 🆔 frlyy` |
+| Tarea | `- [ ] Pagar luz #casa 🔺 🔁 every month 📅 2026-11-05 ⏰ 18:00 🎯 2026-11-20 🆔 frlyy` |
+| Hora · fecha límite | `⏰ 18:00` · `🎯 2026-11-20` (propios de tasktui; Obsidian Tasks los deja como texto) |
 | Etiqueta | `#etiqueta` (las de Obsidian) |
 | Prioridad | 🔺 p1 · ⏫ p2 · 🔼 p3 |
 | Subtarea | tarea con sangría |
-| Nota | línea con sangría bajo la tarea (`    - texto`); se mueve y se borra con ella |
+| Descripción | texto con sangría bajo la tarea (`    Recibo de CFE`) |
+| Nota | viñeta con sangría bajo la tarea (`    - 2026-11-06: llamé, sigue pendiente`) |
+
+La descripción y las notas se mueven y se borran junto con su tarea.
 
 - Lo que no es tarea (notas, texto libre) se respeta tal cual.
 - Las tareas que no tocas no se reformatean.
@@ -123,24 +127,40 @@ Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/api/tasks?vista=hoy&todas=1&q=texto&hoy=AAAA-MM-DD` | vista agrupada (`hoy`, `inbox`, `proximos`, `todas`, `+Proyecto`, `#etiqueta`) |
+| GET | `/api/tasks?view=today&all=1&q=texto&today=AAAA-MM-DD` | vista agrupada (`today`, `inbox`, `upcoming`, `all`, `+Proyecto`, `#etiqueta`) |
 | GET | `/api/tasks/:id` | una tarea |
-| POST | `/api/tasks` `{"texto": "Pagar luz mañana p1 +Finanzas"}` | añadir con captura rápida |
-| PATCH | `/api/tasks/:id` `{"texto": "viernes p2"}` | cambia solo lo escrito (`"completo": true` reemplaza todo; `"sin_fecha": true`) |
+| POST | `/api/tasks` `{"text": "Pagar luz mañana 18:00 p1 +Finanzas limit 20/11", "description": "…"}` | añadir con captura rápida |
+| PATCH | `/api/tasks/:id` `{"text": "viernes p2"}` | cambia solo lo escrito (`"full": true` reemplaza todo; `"no_date"`, `"no_deadline"`, `"description"`) |
+| PUT | `/api/tasks/:id` (tarea completa en JSON) | crear o reemplazar (lo usa la TUI) |
 | POST | `/api/tasks/:id/done` | completar / reabrir |
-| POST | `/api/tasks/:id/notes` `{"texto": "…"}` | añadir nota |
+| POST | `/api/tasks/:id/notes` `{"text": "…"}` | añadir nota con la fecha de hoy |
 | DELETE | `/api/tasks/:id` | eliminar |
-| GET / POST | `/api/projects` | listar / crear `{"nombre": "…"}` |
+| GET / POST | `/api/projects` | listar / crear `{"name": "…"}` |
 | GET | `/api/labels` | etiquetas con pendientes |
 | GET | `/api/export` · POST `/api/import` | respaldo y carga (conserva ids) |
 
-«Hoy» usa `TZ_OFFSET_MINUTES` (en `wrangler.jsonc`) si el cliente no manda `?hoy=`.
+«Hoy» usa `TZ_OFFSET_MINUTES` (en `wrangler.jsonc`) si el cliente no manda `?today=`.
+Los nombres anteriores en español (`vista`, `texto`…) se aceptan como alias.
+Para aplicar migraciones nuevas: `CI=true npx wrangler d1 migrations apply tasktui --remote`
+**antes** de `wrangler deploy` (sin `CI=true`, wrangler pide confirmación y en
+una sesión no interactiva la cancela sin avisar).
 Prueba local: `npx wrangler d1 migrations apply tasktui --local`, crea
 `.dev.vars` con `API_TOKEN=...` y `npx wrangler dev`.
+
+## Una tarea
+
+| Campo | Para qué |
+|---|---|
+| Fecha (+ hora opcional) | cuándo piensas hacerla; con hora, Recordatorios avisa a esa hora |
+| Fecha límite | cuándo **debe** estar hecha; aparece en «Hoy» cuando llega y en rojo si pasó |
+| Descripción | texto libre de varias líneas (contexto, enlaces) |
+| Notas | comentarios de seguimiento, cada uno con su fecha |
+| Prioridad, etiquetas, proyecto, sección, repetición | como en Todoist |
 
 ## Captura rápida
 
 ```
+Entregar reporte viernes 18:00 p1 #trabajo +Cliente limit 20/11
 Pagar luz mañana p1 #casa +Finanzas cada mes
 ```
 
@@ -153,6 +173,8 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 | `lunes` … `domingo` | el próximo ese día |
 | `en 3 días`, `en 2 semanas`, `en 1 mes` | fecha relativa |
 | `15/11`, `15/11/2026`, `2026-11-15` | fecha exacta |
+| `18:00`, `9:30`, `9am`, `6:30pm` | hora (sin fecha, es para hoy) |
+| `limit 20/11`, `limit viernes`, `{20/11}`, `{en 3 días}` | fecha límite |
 | `cada día`, `cada 2 semanas`, `cada lunes`, `cada mes`, `cada año` | repetición |
 | `\hoy` | la palabra como texto literal |
 
@@ -167,7 +189,9 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 | `a` | añadir (en Hoy pone fecha de hoy; en un proyecto o etiqueta, la usa) |
 | `e` | editar con la misma sintaxis |
 | `x` / espacio | completar / reabrir |
-| `s` | cambiar fecha · `t` para hoy |
+| `s` | fecha, hora y límite (`mañana 18:00 limit 20/11`) · `t` para hoy |
+| `i` | editar la descripción en `$EDITOR` |
+| `n` | añadir una nota (con la fecha de hoy) |
 | `1`–`4` | prioridad |
 | `d` | eliminar (pide confirmación) |
 | `u` | deshacer (hasta 50 pasos) |
@@ -179,19 +203,25 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 ## CLI (scripts y Claude)
 
 ```sh
-tasktui add Pagar luz mañana p1 #casa      # comillas si usas #: zsh lo trata como comentario a veces
-tasktui list                               # hoy + vencidas
-tasktui list proximos | inbox | todas | +Trabajo | '#casa'
-tasktui list +Trabajo --all --buscar PR    # incluir completadas, filtrar texto
+tasktui add Pagar luz mañana 18:00 p1 '#casa' limit 20/11 -d "Recibo de CFE"
+tasktui list                               # hoy + vencidas (y límites que llegaron)
+tasktui list upcoming | inbox | all | +Trabajo | '#casa'
+tasktui list +Trabajo --all --search PR    # incluir completadas, filtrar texto
+tasktui show frlyy                         # la tarea con su descripción y notas
 tasktui done frlyy                         # completar / reabrir
-tasktui edit frlyy viernes p2              # cambia solo lo indicado
-tasktui edit frlyy --sin-fecha
-tasktui note frlyy Llamaron, sigue pendiente # añade una nota
+tasktui edit frlyy viernes 9am p2          # cambia solo lo indicado
+tasktui edit frlyy '{25/11}'               # cambia la fecha límite
+tasktui edit frlyy --no-date | --no-deadline
+tasktui describe frlyy Texto nuevo         # sin texto abre $EDITOR
+tasktui note frlyy Llamaron, sigue pendiente
 tasktui rm frlyy
 tasktui projects | labels
-tasktui sync                               # espejo hacia Recordatorios
+tasktui sync                               # espejo con Recordatorios
 tasktui list --json                        # cualquier comando acepta --json
 ```
+
+Los comandos están en inglés; los nombres anteriores en español (`servidor`,
+`exportar`, `--sin-fecha`, `--buscar`…) siguen funcionando como alias.
 
 ## Código
 
@@ -244,10 +274,10 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** núcleo `tasktui-core` separado, compila a wasm.
 - **Hecho:** servidor con API en Cloudflare Workers + D1.
 - **Hecho:** TUI/CLI en modo remoto, con caché sin conexión.
-- **Hecho:** `tasktui exportar` a `.md` como respaldo.
+- **Hecho:** `tasktui export` a `.md` como respaldo.
+- **Hecho:** descripción, notas con fecha, hora y fecha límite; CLI y API en inglés.
 - **Siguiente:** página web instalable (PWA) para el celular y cualquier
   navegador, con avisos push.
-- **Después:** horas en las fechas (`mañana 18:00`) para avisos a una hora exacta.
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.
 - **Fase 4:** notificaciones en macOS/iPhone (puente opcional con Recordatorios

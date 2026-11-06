@@ -71,8 +71,9 @@ fn push_grouped<K>(groups: &mut Vec<Group<K>>, title: Option<String>, pos: K) {
 
 type Item<'a, K> = (K, &'a Task);
 
+/// Primero las que tienen hora (en orden), luego por prioridad y fecha.
 fn by_priority<K>(v: &mut [Item<K>]) {
-    v.sort_by_key(|(_, t)| (t.priority, t.due));
+    v.sort_by_key(|(_, t)| (t.time.is_none(), t.time, t.priority, t.due));
 }
 
 /// Proyectos en orden: Inbox primero y luego alfabético.
@@ -114,10 +115,13 @@ pub fn build<K: Copy>(
             let (mut over, mut tod, mut done): (Vec<Item<K>>, Vec<Item<K>>, Vec<Item<K>>) = (vec![], vec![], vec![]);
             for (pos, t) in iter().filter(|(_, t)| matches(t, &q)) {
                 if !t.done {
-                    match t.due {
-                        Some(d) if d < today => over.push((pos, t)),
-                        Some(d) if d == today => tod.push((pos, t)),
-                        _ => {}
+                    // La fecha límite también cuenta: si es hoy o ya pasó, aparece.
+                    let late = t.due.is_some_and(|d| d < today) || t.deadline.is_some_and(|d| d < today);
+                    let now = t.due == Some(today) || t.deadline == Some(today);
+                    if late {
+                        over.push((pos, t));
+                    } else if now {
+                        tod.push((pos, t));
                     }
                 } else if show_done && t.done_date == Some(today) {
                     done.push((pos, t));
@@ -137,7 +141,7 @@ pub fn build<K: Copy>(
             let mut v: Vec<Item<K>> = iter()
                 .filter(|(_, t)| !t.done && t.due.is_some_and(|d| d > today) && matches(t, &q))
                 .collect();
-            v.sort_by_key(|(_, t)| (t.due, t.priority));
+            v.sort_by_key(|(_, t)| (t.due, t.time.is_none(), t.time, t.priority));
             for (pos, t) in v {
                 push_grouped(&mut groups, Some(dates::long(t.due.unwrap(), today)), pos);
             }
@@ -162,4 +166,37 @@ pub fn build<K: Copy>(
     }
     groups.retain(|g| !g.items.is_empty());
     groups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveTime;
+
+    fn d(s: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn hoy_con_hora_y_limite() {
+        let hoy = d("2026-11-06");
+        let mut a = Task::new("Sin hora p1");
+        a.priority = 1;
+        a.due = Some(hoy);
+        let mut b = Task::new("A las 9");
+        b.due = Some(hoy);
+        b.time = NaiveTime::from_hms_opt(9, 0, 0);
+        let mut c = Task::new("Límite hoy, planeada para después");
+        c.due = Some(d("2026-11-20"));
+        c.deadline = Some(hoy);
+        let mut e = Task::new("Límite vencido");
+        e.deadline = Some(d("2026-11-01"));
+        let f = Task::new("Sin fechas");
+        let tasks = [a, b, c, e, f];
+        let items: Vec<(usize, &Task)> = tasks.iter().enumerate().collect();
+        let g = build(&items, &[INBOX.into()], &View::Today, hoy, false, "");
+        let titles: Vec<Vec<&str>> =
+            g.iter().map(|g| g.items.iter().map(|&i| tasks[i].text.as_str()).collect()).collect();
+        assert_eq!(titles, vec![vec!["Límite vencido"], vec!["A las 9", "Sin hora p1", "Límite hoy, planeada para después"]]);
+    }
 }

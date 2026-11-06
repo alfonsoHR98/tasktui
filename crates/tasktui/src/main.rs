@@ -37,36 +37,46 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Añade una tarea: tasktui add Pagar luz mañana p1 #casa +Finanzas
+    /// Añade una tarea: tasktui add Pagar luz mañana 18:00 p1 #casa +Finanzas limit 20/11
     Add {
         #[arg(required = true)]
         text: Vec<String>,
+        /// Descripción de la tarea
+        #[arg(short, long)]
+        description: Option<String>,
     },
-    /// Lista tareas: hoy (por defecto), inbox, proximos, todas, +Proyecto, #etiqueta
+    /// Lista tareas: today (por defecto), inbox, upcoming, all, +Proyecto, #etiqueta
     #[command(alias = "ls")]
     List {
-        vista: Option<String>,
+        view: Option<String>,
         /// Incluir completadas
         #[arg(short, long)]
         all: bool,
         /// Filtrar por texto
-        #[arg(short, long)]
-        buscar: Option<String>,
+        #[arg(short, long, alias = "buscar")]
+        search: Option<String>,
     },
+    /// Muestra una tarea con su descripción y notas
+    Show { id: String },
     /// Completa (o reabre) tareas por id
     Done {
         #[arg(required = true)]
         ids: Vec<String>,
     },
-    /// Cambia solo lo indicado: tasktui edit a1b2c viernes p2
+    /// Cambia solo lo indicado: tasktui edit a1b2c viernes 18:00 p2 limit 20/11
     Edit {
         id: String,
         text: Vec<String>,
-        /// Quita la fecha y la repetición
+        /// Quita la fecha, la hora y la repetición
+        #[arg(long, alias = "sin-fecha")]
+        no_date: bool,
+        /// Quita la fecha límite
         #[arg(long)]
-        sin_fecha: bool,
+        no_deadline: bool,
     },
-    /// Añade una nota debajo de la tarea: tasktui note a1b2c Llamó, sigue pendiente
+    /// Cambia la descripción: tasktui describe a1b2c texto (sin texto abre $EDITOR)
+    Describe { id: String, text: Vec<String> },
+    /// Añade una nota con la fecha de hoy: tasktui note a1b2c Llamó, sigue pendiente
     Note {
         id: String,
         #[arg(required = true)]
@@ -77,17 +87,17 @@ enum Cmd {
         #[arg(required = true)]
         ids: Vec<String>,
     },
-    /// Espejo hacia la app Recordatorios: tasktui sync [--auto on|off]
+    /// Espejo con la app Recordatorios (macOS): tasktui sync [--auto on|off] [--agent on|off]
     Sync {
-        /// Sincronizar solo tras cada cambio (on) o dejar de hacerlo (off)
+        /// Sincronizar en segundo plano tras cada cambio (on) o dejar de hacerlo (off)
         #[arg(long, value_parser = ["on", "off"])]
         auto: Option<String>,
         /// Sincronizar cada N minutos con launchd (on), o quitarlo (off)
-        #[arg(long, value_parser = ["on", "off"])]
-        agente: Option<String>,
+        #[arg(long, alias = "agente", value_parser = ["on", "off"])]
+        agent: Option<String>,
         /// Minutos entre sincronizaciones del agente
-        #[arg(long, default_value_t = 10)]
-        cada: u32,
+        #[arg(long, alias = "cada", default_value_t = 10)]
+        every: u32,
         /// Sin salida (para ejecutarlo en segundo plano)
         #[arg(short, long)]
         quiet: bool,
@@ -98,25 +108,30 @@ enum Cmd {
     Labels,
     /// Muestra la carpeta de datos (modo local), o la cambia si se da una ruta
     Dir { path: Option<String> },
-    /// Servidor: tasktui servidor [conectar <url> | local | remoto | subir]
-    Servidor {
+    /// Servidor: tasktui server [connect <url> | local | remote | push]
+    #[command(alias = "servidor")]
+    Server {
         #[command(subcommand)]
-        accion: Option<ServidorCmd>,
+        action: Option<ServerCmd>,
     },
     /// Escribe todas las tareas como .md (formato Obsidian Tasks) en una carpeta
-    Exportar { carpeta: String },
+    #[command(alias = "exportar")]
+    Export { dir: String },
 }
 
 #[derive(Subcommand)]
-enum ServidorCmd {
+enum ServerCmd {
     /// Guarda la URL y el token (lo pide por la entrada estándar) y activa el modo remoto
-    Conectar { url: String },
+    #[command(alias = "conectar")]
+    Connect { url: String },
     /// Usar los .md locales (el servidor queda configurado)
     Local,
     /// Usar el servidor
-    Remoto,
+    #[command(alias = "remoto")]
+    Remote,
     /// Sube las tareas de los .md locales al servidor (conserva ids; no borra nada)
-    Subir,
+    #[command(alias = "subir")]
+    Push,
 }
 
 fn task_json(t: &Task) -> Value {
@@ -127,8 +142,17 @@ fn task_plain(t: &Task, show_project: bool) -> String {
     let today = today();
     let check = if t.done { "✓" } else { "○" };
     let prio = if t.priority < 4 { format!("p{}", t.priority) } else { "  ".into() };
-    let due = t.due.map(|d| dates::rel(d, today)).unwrap_or_default();
+    let mut due = t.due.map(|d| dates::rel(d, today)).unwrap_or_default();
+    if let Some(h) = t.time {
+        due.push_str(&format!(" {}", h.format("%H:%M")));
+    }
     let mut s = format!("{:<6} {check} {prio} {due:<8} {}", t.id.as_deref().unwrap_or("-"), t.text);
+    if let Some(d) = t.deadline {
+        s.push_str(&format!(" 🎯{}", dates::rel(d, today)));
+    }
+    if !t.description.trim().is_empty() || !t.notes.is_empty() {
+        s.push_str(" ≡");
+    }
     if t.recurrence.is_some() {
         s.push_str(" ↻");
     }
@@ -156,8 +180,8 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(Cmd::Servidor { accion }) = &cli.cmd {
-        return servidor(accion.as_ref(), cli.json);
+    if let Some(Cmd::Server { action }) = &cli.cmd {
+        return server(action.as_ref(), cli.json);
     }
 
     let mut store = Store::open()?;
@@ -172,21 +196,26 @@ fn main() -> Result<()> {
 
     let mutating = matches!(
         cmd,
-        Cmd::Add { .. } | Cmd::Done { .. } | Cmd::Edit { .. } | Cmd::Note { .. } | Cmd::Rm { .. }
+        Cmd::Add { .. }
+            | Cmd::Done { .. }
+            | Cmd::Edit { .. }
+            | Cmd::Describe { .. }
+            | Cmd::Note { .. }
+            | Cmd::Rm { .. }
     );
     match cmd {
-        Cmd::Dir { .. } | Cmd::Servidor { .. } => unreachable!(),
-        Cmd::Exportar { carpeta } => {
-            let dir = std::path::PathBuf::from(&carpeta);
+        Cmd::Dir { .. } | Cmd::Server { .. } => unreachable!(),
+        Cmd::Export { dir } => {
+            let dir = std::path::PathBuf::from(&dir);
             let n = files::export(&store, &dir)?;
             println!("Exportados {n} proyectos a {}", dir.display());
         }
-        Cmd::Sync { auto, agente, cada, quiet } => {
-            if let Some(a) = agente {
-                let path = reminders::set_agent(a == "on", cada)?;
+        Cmd::Sync { auto, agent, every, quiet } => {
+            if let Some(a) = agent {
+                let path = reminders::set_agent(a == "on", every)?;
                 if !quiet {
                     if a == "on" {
-                        println!("Agente instalado: sincroniza cada {cada} min ({})", path.display());
+                        println!("Agente instalado: sincroniza cada {every} min ({})", path.display());
                     } else {
                         println!("Agente quitado");
                     }
@@ -228,12 +257,13 @@ fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::Add { text } => {
+        Cmd::Add { text, description } => {
             let q = quick::parse_quick(&text.join(" "), today);
             if q.text.is_empty() {
                 bail!("La tarea necesita texto");
             }
-            let t = q.into_task(INBOX);
+            let mut t = q.into_task(INBOX);
+            t.description = description.unwrap_or_default().trim().to_string();
             let project = t.project.clone();
             let id = store.add(t, &project)?;
             let t = store.task_at(store.find(&id).unwrap()).unwrap();
@@ -243,14 +273,14 @@ fn main() -> Result<()> {
                 println!("Añadida: {}", task_plain(t, true));
             }
         }
-        Cmd::List { vista, all, buscar } => {
-            let view = match vista.as_deref() {
+        Cmd::List { view, all, search } => {
+            let view = match view.as_deref() {
                 None => View::Today,
                 Some(v) => View::parse(v).ok_or_else(|| {
-                    anyhow::anyhow!("Vista desconocida «{v}». Usa: hoy, inbox, proximos, todas, +Proyecto, #etiqueta")
+                    anyhow::anyhow!("Vista desconocida «{v}». Usa: today, inbox, upcoming, all, +Proyecto, #etiqueta")
                 })?,
             };
-            let groups = store.view(&view, today, all, buscar.as_deref().unwrap_or(""));
+            let groups = store.view(&view, today, all, search.as_deref().unwrap_or(""));
             let show_project = !matches!(view, View::Project(_) | View::Inbox | View::All);
             if json {
                 let tasks: Vec<Value> = groups
@@ -281,13 +311,56 @@ fn main() -> Result<()> {
                 println!("{} {id}", if done { "✓ completada" } else { "○ reabierta" });
             }
         }
-        Cmd::Edit { id, text, sin_fecha } => {
+        Cmd::Show { id } => {
+            let t = store.find(&id).and_then(|p| store.task_at(p)).ok_or_else(|| anyhow::anyhow!("No existe la tarea {id}"))?;
+            if json {
+                println!("{}", task_json(t));
+            } else {
+                println!("{}", task_plain(t, true));
+                if let Some(d) = t.deadline {
+                    println!("  🎯 límite {}", dates::long(d, today));
+                }
+                for l in t.description.lines() {
+                    println!("  {l}");
+                }
+                for n in &t.notes {
+                    match n.date {
+                        Some(d) => println!("  › {}: {}", dates::rel(d, today), n.text),
+                        None => println!("  › {}", n.text),
+                    }
+                }
+            }
+        }
+        Cmd::Describe { id, text } => {
+            let desc = if text.is_empty() {
+                let current = store
+                    .find(&id)
+                    .and_then(|p| store.task_at(p))
+                    .map(|t| t.description.clone())
+                    .ok_or_else(|| anyhow::anyhow!("No existe la tarea {id}"))?;
+                edit_text(&id, &current)?
+            } else {
+                text.join(" ")
+            };
+            store.update(&id, |t| t.description = desc.trim().to_string())?;
+            let t = store.task_at(store.find(&id).unwrap()).unwrap();
+            if json {
+                println!("{}", task_json(t));
+            } else {
+                println!("Descripción guardada: {}", task_plain(t, true));
+            }
+        }
+        Cmd::Edit { id, text, no_date, no_deadline } => {
             let q = quick::parse_quick(&text.join(" "), today);
             store.update(&id, |t| {
                 q.apply_partial(t);
-                if sin_fecha {
+                if no_date {
                     t.due = None;
+                    t.time = None;
                     t.recurrence = None;
+                }
+                if no_deadline {
+                    t.deadline = None;
                 }
             })?;
             let t = store.task_at(store.find(&id).unwrap()).unwrap();
@@ -348,9 +421,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// `tasktui servidor …`
-fn servidor(accion: Option<&ServidorCmd>, json: bool) -> Result<()> {
-    match accion {
+/// `tasktui server …`
+fn server(action: Option<&ServerCmd>, json: bool) -> Result<()> {
+    match action {
         None => {
             let modo = match config::mode()? {
                 config::Mode::Local(d) => format!("local ({})", d.display()),
@@ -361,15 +434,15 @@ fn servidor(accion: Option<&ServidorCmd>, json: bool) -> Result<()> {
                     Ok(_) => format!("{} responde y acepta el token", s.url),
                     Err(e) => format!("{}: {e}", s.url),
                 },
-                None => "sin servidor configurado (tasktui servidor conectar <url>)".into(),
+                None => "sin servidor configurado (tasktui server connect <url>)".into(),
             };
             if json {
-                println!("{}", serde_json::json!({ "modo": modo, "servidor": estado }));
+                println!("{}", serde_json::json!({ "mode": modo, "server": estado }));
             } else {
                 println!("Modo: {modo}\nServidor: {estado}");
             }
         }
-        Some(ServidorCmd::Conectar { url }) => {
+        Some(ServerCmd::Connect { url }) => {
             eprint!("Token del servidor: ");
             let mut token = String::new();
             std::io::stdin().read_line(&mut token)?;
@@ -382,20 +455,20 @@ fn servidor(accion: Option<&ServidorCmd>, json: bool) -> Result<()> {
             config::set_remote(true)?;
             println!("Conectado a {} (modo remoto). Token en {}", server.url, config::server_path().display());
         }
-        Some(ServidorCmd::Local) => {
+        Some(ServerCmd::Local) => {
             config::set_remote(false)?;
             println!("Modo local: {}", config::data_dir()?.display());
         }
-        Some(ServidorCmd::Remoto) => {
+        Some(ServerCmd::Remote) => {
             let Some(s) = config::server() else {
-                bail!("No hay servidor configurado: tasktui servidor conectar <url>");
+                bail!("No hay servidor configurado: tasktui server connect <url>");
             };
             config::set_remote(true)?;
             println!("Modo remoto: {}", s.url);
         }
-        Some(ServidorCmd::Subir) => {
+        Some(ServerCmd::Push) => {
             let Some(s) = config::server() else {
-                bail!("No hay servidor configurado: tasktui servidor conectar <url>");
+                bail!("No hay servidor configurado: tasktui server connect <url>");
             };
             let local = files::FileStore::open(config::data_dir()?)?;
             let tareas: Vec<TaskDto> = local.iter().map(|(_, t)| TaskDto::from(t)).collect();
@@ -404,4 +477,19 @@ fn servidor(accion: Option<&ServidorCmd>, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Edita un texto en `$VISUAL`/`$EDITOR` (o `nano`) y devuelve el resultado.
+pub fn edit_text(id: &str, current: &str) -> Result<String> {
+    let path = std::env::temp_dir().join(format!("tasktui-{id}.md"));
+    std::fs::write(&path, current)?;
+    let editor = std::env::var("VISUAL").or_else(|_| std::env::var("EDITOR")).unwrap_or_else(|_| "nano".into());
+    let mut parts = editor.split_whitespace();
+    let status = std::process::Command::new(parts.next().unwrap_or("nano")).args(parts).arg(&path).status()?;
+    let text = std::fs::read_to_string(&path)?;
+    let _ = std::fs::remove_file(&path);
+    if !status.success() {
+        bail!("El editor terminó con error");
+    }
+    Ok(text.trim_end().to_string())
 }

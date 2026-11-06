@@ -1,6 +1,6 @@
 //! Modelo de datos: tareas y recurrencias.
 
-use chrono::{Datelike, Duration, Months, NaiveDate, Weekday};
+use chrono::{Datelike, Duration, Months, NaiveDate, NaiveTime, Weekday};
 
 pub const WEEKDAYS: [Weekday; 7] = [
     Weekday::Mon,
@@ -160,6 +160,19 @@ impl Recurrence {
     }
 }
 
+/// Comentario de seguimiento, con la fecha en que se escribió.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Note {
+    pub date: Option<NaiveDate>,
+    pub text: String,
+}
+
+impl Note {
+    pub fn new(text: &str, date: Option<NaiveDate>) -> Self {
+        Note { date, text: text.trim().to_string() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Task {
     /// Identificador estable (campo `🆔` de Obsidian Tasks).
@@ -171,14 +184,20 @@ pub struct Task {
     pub labels: Vec<String>,
     /// 1 = máxima ... 4 = sin prioridad (como Todoist).
     pub priority: u8,
+    /// Fecha: cuándo piensas hacerla.
     pub due: Option<NaiveDate>,
+    /// Hora opcional de `due` (con hora, Recordatorios avisa a esa hora).
+    pub time: Option<NaiveTime>,
+    /// Fecha límite: cuándo debe estar hecha.
+    pub deadline: Option<NaiveDate>,
     pub done_date: Option<NaiveDate>,
     pub recurrence: Option<Recurrence>,
     /// Campos de Obsidian Tasks que no manejamos, preservados tal cual.
     pub extra: Vec<String>,
-    /// Notas: líneas con más sangría justo debajo de la tarea (`    - texto`).
-    /// Las llena el almacén; `render_line` no las escribe.
-    pub notes: Vec<String>,
+    /// Descripción: texto libre, puede tener varias líneas.
+    pub description: String,
+    /// Comentarios de seguimiento, del más viejo al más nuevo.
+    pub notes: Vec<Note>,
     pub indent: String,
     /// Lo asigna el almacén: nombre del archivo (proyecto) y encabezado (sección).
     pub project: String,
@@ -195,9 +214,12 @@ impl Task {
             labels: vec![],
             priority: 4,
             due: None,
+            time: None,
+            deadline: None,
             done_date: None,
             recurrence: None,
             extra: vec![],
+            description: String::new(),
             notes: vec![],
             indent: String::new(),
             project: String::new(),
@@ -212,7 +234,7 @@ impl Task {
     }
 
     pub fn is_overdue(&self, today: NaiveDate) -> bool {
-        !self.done && self.due.is_some_and(|d| d < today)
+        !self.done && (self.due.is_some_and(|d| d < today) || self.deadline.is_some_and(|d| d < today))
     }
 
     /// Completa una tarea pendiente. Si se repite, la pendiente conserva su id
@@ -228,6 +250,7 @@ impl Task {
         next.due = Some(rec.next(self.due.unwrap_or(today)));
         let mut done = self.clone();
         done.id = Some(done_id);
+        done.description.clear();
         done.notes.clear();
         done.set_done(true, today);
         Completion::Recurring { next, done }
@@ -266,7 +289,7 @@ mod tests {
     fn completar() {
         let mut t = Task::new("Gym");
         t.id = Some("aaaaa".into());
-        t.notes = vec!["rutina A".into()];
+        t.notes = vec![Note::new("rutina A", None)];
         t.due = Some(d("2026-11-05"));
         match t.complete(d("2026-11-06"), "bbbbb".into()) {
             Completion::Simple(h) => assert!(h.done && h.done_date == Some(d("2026-11-06"))),
@@ -276,7 +299,7 @@ mod tests {
         match t.complete(d("2026-11-06"), "bbbbb".into()) {
             Completion::Recurring { next, done } => {
                 assert_eq!((next.id.as_deref(), next.done, next.due), (Some("aaaaa"), false, Some(d("2026-11-09"))));
-                assert_eq!(next.notes, vec!["rutina A"]);
+                assert_eq!(next.notes, vec![Note::new("rutina A", None)]);
                 assert_eq!((done.id.as_deref(), done.done), (Some("bbbbb"), true));
                 assert!(done.notes.is_empty());
             }

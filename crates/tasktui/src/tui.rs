@@ -59,6 +59,7 @@ enum InputKind {
     Add,
     Edit(String),
     Schedule(String),
+    Note(String),
     Search,
 }
 
@@ -141,6 +142,8 @@ pub struct App {
     show_done: bool,
     msg: String,
     pending_g: bool,
+    /// Tarea cuya descripción se editará en `$EDITOR` (fuera de la TUI).
+    pending_editor: Option<String>,
     undo: Vec<Snapshot>,
     quit: bool,
 }
@@ -173,6 +176,7 @@ impl App {
             show_done: false,
             msg: String::new(),
             pending_g: false,
+            pending_editor: None,
             undo: vec![],
             quit: false,
         };
@@ -189,6 +193,20 @@ impl App {
                     if k.kind == KeyEventKind::Press {
                         self.on_key(k);
                     }
+                    if let Some(id) = self.pending_editor.take() {
+                        // El editor necesita la terminal: se suspende la TUI.
+                        ratatui::restore();
+                        let edited = self.edit_in_editor(&id);
+                        *term = ratatui::init();
+                        match edited {
+                            Ok(Some(desc)) => self.mutate(|s| {
+                                s.update(&id, |t| t.description = desc)?;
+                                Ok(("Descripción guardada".into(), None))
+                            }),
+                            Ok(None) => self.msg = "Descripción sin cambios".into(),
+                            Err(e) => self.msg = format!("Error: {e}"),
+                        }
+                    }
                 }
             } else {
                 // Sin actividad: recarga por si hubo cambios desde el celular.
@@ -197,6 +215,19 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    /// Abre la descripción en `$EDITOR`. Devuelve el texto nuevo, o `None`
+    /// si no cambió.
+    fn edit_in_editor(&self, id: &str) -> Result<Option<String>> {
+        let current = self
+            .store
+            .find(id)
+            .and_then(|p| self.store.task_at(p))
+            .map(|t| t.description.clone())
+            .unwrap_or_default();
+        let new = crate::edit_text(id, &current)?;
+        Ok((new != current.trim_end()).then_some(new))
     }
 
     // ---------- estado ----------
@@ -491,8 +522,14 @@ impl App {
                 self.open_input(InputKind::Edit(id), &s);
             }
             KeyCode::Char('s') => {
-                let s = t.due.map(|d| d.to_string()).unwrap_or_default();
-                self.open_input(InputKind::Schedule(id), &s);
+                let mut s = t.due.map(|d| d.to_string()).unwrap_or_default();
+                if let Some(h) = t.time {
+                    s.push_str(&format!(" {}", h.format("%H:%M")));
+                }
+                if let Some(d) = t.deadline {
+                    s.push_str(&format!(" limit {d}"));
+                }
+                self.open_input(InputKind::Schedule(id), s.trim());
             }
             KeyCode::Char('t') => {
                 let today = self.today;
@@ -509,6 +546,8 @@ impl App {
                 });
             }
             KeyCode::Char('d') => self.mode = Mode::Confirm(id),
+            KeyCode::Char('i') => self.pending_editor = Some(id),
+            KeyCode::Char('n') => self.open_input(InputKind::Note(id), ""),
             _ => {}
         }
     }
@@ -550,14 +589,25 @@ impl App {
                     Ok(("Guardada".into(), None))
                 });
             }
+            InputKind::Note(id) => {
+                if text.trim().is_empty() {
+                    return;
+                }
+                self.mutate(|s| {
+                    s.add_note(&id, &text)?;
+                    Ok(("Nota añadida".into(), None))
+                });
+            }
             InputKind::Schedule(id) => {
-                if !text.trim().is_empty() && q.due.is_none() {
+                if !text.trim().is_empty() && q.due.is_none() && q.deadline.is_none() {
                     self.msg = format!("No entendí la fecha «{text}»");
                     return;
                 }
                 self.mutate(|s| {
                     s.update(&id, |t| {
                         t.due = q.due;
+                        t.time = q.time;
+                        t.deadline = q.deadline;
                         if q.recurrence.is_some() {
                             t.recurrence = q.recurrence;
                         }
@@ -578,8 +628,11 @@ impl App {
         let [main, status] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let side_w = (main.width / 3).min(26);
         let [side, right] = Layout::horizontal([Constraint::Length(side_w), Constraint::Min(10)]).areas(main);
-        let notes = self.selected().map(|t| t.notes.len()).unwrap_or(0) as u16;
-        let detail_h = 6 + notes.min(6);
+        let extra = self
+            .selected()
+            .map(|t| t.notes.len() + t.description.lines().filter(|l| !l.trim().is_empty()).count())
+            .unwrap_or(0) as u16;
+        let detail_h = 6 + extra.min(8);
         let [list, detail] = Layout::vertical([Constraint::Min(3), Constraint::Length(detail_h)]).areas(right);
         self.draw_side(f, side);
         self.draw_list(f, list);
@@ -665,7 +718,17 @@ impl App {
             } else {
                 Color::Cyan
             };
-            spans.push(Span::styled(format!("  {}", dates::rel(d, today)), Style::new().fg(color)));
+            let mut when = dates::rel(d, today);
+            if let Some(h) = t.time {
+                when.push_str(&format!(" {}", h.format("%H:%M")));
+            }
+            spans.push(Span::styled(format!("  {when}"), Style::new().fg(color)));
+        }
+        if let Some(d) = t.deadline.filter(|_| !t.done) {
+            spans.push(Span::styled(format!("  🎯 {}", dates::rel(d, today)), deadline_style(d, today)));
+        }
+        if !t.description.trim().is_empty() || !t.notes.is_empty() {
+            spans.push(Span::styled(" ≡", Style::new().fg(Color::DarkGray)));
         }
         if t.recurrence.is_some() {
             spans.push(Span::styled(" ↻", Style::new().fg(Color::Cyan)));
@@ -731,7 +794,14 @@ impl App {
         }
         let mut meta = vec![];
         if let Some(d) = t.due {
-            meta.push(format!("📅 {}", dates::long(d, self.today)));
+            let mut when = dates::long(d, self.today);
+            if let Some(h) = t.time {
+                when.push_str(&format!(" · {}", h.format("%H:%M")));
+            }
+            meta.push(format!("📅 {when}"));
+        }
+        if let Some(d) = t.deadline {
+            meta.push(format!("🎯 límite {}", dates::long(d, self.today)));
         }
         if t.priority < 4 {
             meta.push(format!("p{}", t.priority));
@@ -751,8 +821,15 @@ impl App {
                 dim,
             ),
         ];
+        for l in t.description.lines().filter(|l| !l.trim().is_empty()) {
+            lines.push(Line::raw(l.to_string()));
+        }
         for n in &t.notes {
-            lines.push(Line::raw(format!("› {n}")));
+            let when = n.date.map(|d| format!("{} · ", dates::rel(d, self.today))).unwrap_or_default();
+            lines.push(Line::from(vec![
+                Span::styled(format!("› {when}"), dim),
+                Span::raw(n.text.clone()),
+            ]));
         }
         f.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: true }), area);
     }
@@ -765,7 +842,7 @@ impl App {
             }
             _ if !self.msg.is_empty() => (format!(" {}", self.msg), Style::new().fg(Color::Yellow)),
             _ => (
-                " a añadir · x completar · e editar · s fecha · d borrar · / buscar · u deshacer · ? ayuda".into(),
+                " a añadir · x completar · e editar · s fecha · i descripción · n nota · d borrar · / buscar · ? ayuda".into(),
                 Style::new().fg(Color::DarkGray),
             ),
         };
@@ -786,7 +863,8 @@ impl App {
         let title = match kind {
             InputKind::Add => format!(" Nueva tarea → {} ", self.default_project()),
             InputKind::Edit(_) => " Editar tarea ".into(),
-            InputKind::Schedule(_) => " Fecha (hoy, mañana, viernes, 15/11, en 3 días; vacío = sin fecha) ".into(),
+            InputKind::Schedule(_) => " Fecha (mañana 18:00, viernes, 15/11 limit 20/11; vacío = sin fecha) ".into(),
+            InputKind::Note(_) => " Nueva nota (se guarda con la fecha de hoy) ".into(),
             InputKind::Search => " Buscar ".into(),
         };
         let block = Block::bordered()
@@ -810,17 +888,29 @@ impl App {
         let (preview, hint) = match kind {
             InputKind::Add | InputKind::Edit(_) => (
                 self.preview(&quick::parse_quick(&self.input.text(), self.today), matches!(kind, InputKind::Add)),
-                Line::styled("#etiqueta  +Proyecto  p1-p4  hoy/mañana/viernes/15/11  cada lunes  \\literal", dim),
+                Line::styled("#etiqueta  +Proyecto  p1-p4  mañana 18:00  limit 20/11  cada lunes  \\literal", dim),
             ),
             InputKind::Schedule(_) => {
                 let q = quick::parse_quick(&self.input.text(), self.today);
-                let p = match (q.due, self.input.buf.is_empty()) {
+                let mut desc = vec![];
+                if let Some(d) = q.due {
+                    let mut s = format!("📅 {}", dates::long(d, self.today));
+                    if let Some(h) = q.time {
+                        s.push_str(&format!(" · {}", h.format("%H:%M")));
+                    }
+                    desc.push(s);
+                }
+                if let Some(d) = q.deadline {
+                    desc.push(format!("🎯 límite {}", dates::long(d, self.today)));
+                }
+                let p = match (desc.is_empty(), self.input.buf.is_empty()) {
                     (_, true) => Line::styled("→ sin fecha", dim),
-                    (Some(d), _) => Line::styled(format!("→ {}", dates::long(d, self.today)), Style::new().fg(Color::Green)),
-                    (None, _) => Line::styled("→ ?", Style::new().fg(Color::Red)),
+                    (false, _) => Line::styled(format!("→ {}", desc.join("   ")), Style::new().fg(Color::Green)),
+                    (true, _) => Line::styled("→ ?", Style::new().fg(Color::Red)),
                 };
                 (p, Line::styled("Enter guardar · Esc cancelar", dim))
             }
+            InputKind::Note(_) => (Line::raw(""), Line::styled("Enter guardar · Esc cancelar", dim)),
             InputKind::Search => (Line::raw(""), Line::styled("Enter fijar · Esc limpiar", dim)),
         };
         if inner.height >= 4 {
@@ -838,7 +928,14 @@ impl App {
         };
         let due = q.due.or((adding && self.view == View::Today).then_some(self.today));
         if let Some(d) = due {
-            push(format!("📅 {}", dates::long(d, self.today)), Color::Green);
+            let mut s = format!("📅 {}", dates::long(d, self.today));
+            if let Some(h) = q.time {
+                s.push_str(&format!(" · {}", h.format("%H:%M")));
+            }
+            push(s, Color::Green);
+        }
+        if let Some(d) = q.deadline {
+            push(format!("🎯 límite {}", dates::long(d, self.today)), Color::Red);
         }
         if let Some(p) = q.priority.filter(|p| *p < 4) {
             push(format!("p{p}"), prio_color(p));
@@ -856,6 +953,15 @@ impl App {
     }
 }
 
+/// Fecha límite: rojo si ya pasó o es hoy, amarillo si faltan 2 días o menos.
+fn deadline_style(d: NaiveDate, today: NaiveDate) -> Style {
+    match (d - today).num_days() {
+        ..=0 => Style::new().fg(Color::Red).add_modifier(Modifier::BOLD),
+        1..=2 => Style::new().fg(Color::Yellow),
+        _ => Style::new().fg(Color::DarkGray),
+    }
+}
+
 fn draw_help(f: &mut Frame) {
     let keys = [
         ("Navegación", ""),
@@ -870,7 +976,9 @@ fn draw_help(f: &mut Frame) {
         ("a", "añadir (captura rápida)"),
         ("e", "editar"),
         ("x  espacio", "completar / reabrir"),
-        ("s", "cambiar fecha"),
+        ("s", "fecha, hora y límite (mañana 18:00 limit 20/11)"),
+        ("i", "editar la descripción en $EDITOR"),
+        ("n", "añadir una nota con fecha"),
         ("t", "poner para hoy"),
         ("1 2 3 4", "prioridad"),
         ("d", "eliminar"),

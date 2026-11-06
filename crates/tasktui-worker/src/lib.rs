@@ -8,18 +8,21 @@
 //! | Método | Ruta | Qué hace |
 //! |---|---|---|
 //! | GET | `/api/health` | estado (sin token) |
-//! | GET | `/api/tasks?vista=hoy&todas=1&q=texto&hoy=AAAA-MM-DD` | vista agrupada |
+//! | GET | `/api/tasks?view=today&all=1&q=texto&today=AAAA-MM-DD` | vista agrupada |
 //! | GET | `/api/tasks/:id` | una tarea |
-//! | POST | `/api/tasks` `{texto, proyecto?}` | añadir con captura rápida |
-//! | PATCH | `/api/tasks/:id` `{texto?, completo?, sin_fecha?}` | editar con captura rápida |
+//! | POST | `/api/tasks` `{text, project?}` | añadir con captura rápida |
+//! | PATCH | `/api/tasks/:id` `{text?, full?, no_date?, no_deadline?, description?}` | editar |
 //! | PUT | `/api/tasks/:id` `TaskDto` | crear o reemplazar la tarea completa (lo usa la TUI) |
 //! | POST | `/api/tasks/:id/done` | completar / reabrir |
-//! | POST | `/api/tasks/:id/notes` `{texto}` | añadir nota |
+//! | POST | `/api/tasks/:id/notes` `{text}` | añadir nota (con la fecha de hoy) |
 //! | DELETE | `/api/tasks/:id` | eliminar |
-//! | GET/POST | `/api/projects` | listar / crear `{nombre}` |
+//! | GET/POST | `/api/projects` | listar / crear `{name}` |
 //! | GET | `/api/labels` | etiquetas con pendientes |
 //! | GET | `/api/export` | todas las tareas (respaldo) |
-//! | POST | `/api/import` `{tareas, proyectos}` | cargar tareas conservando ids |
+//! | POST | `/api/import` `{tasks, projects}` | cargar tareas conservando ids |
+//!
+//! Los mensajes de error van en español. Los nombres anteriores en español
+//! (`vista`, `texto`…) se siguen aceptando como alias.
 
 mod db;
 
@@ -27,7 +30,7 @@ use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tasktui_core::dto::TaskDto;
-use tasktui_core::model::{Completion, Task};
+use tasktui_core::model::{Completion, Note, Task};
 use tasktui_core::quick::parse_quick;
 use tasktui_core::views::{self, View};
 use tasktui_core::INBOX;
@@ -80,10 +83,10 @@ fn authorized(req: &Request, env: &Env) -> bool {
     }
 }
 
-/// «Hoy» del usuario: `?hoy=` si viene, si no la hora actual con `TZ_OFFSET_MINUTES`
+/// «Hoy» del usuario: `?today=` si viene, si no la hora actual con `TZ_OFFSET_MINUTES`
 /// (Ciudad de México = -360, sin horario de verano).
 fn today(url: &Url, env: &Env) -> NaiveDate {
-    if let Some(d) = query_param(url, "hoy").and_then(|s| s.parse().ok()) {
+    if let Some(d) = query_param(url, "today").and_then(|s| s.parse().ok()) {
         return d;
     }
     let offset: i64 = env
@@ -95,8 +98,15 @@ fn today(url: &Url, env: &Env) -> NaiveDate {
     (now + Duration::minutes(offset)).date_naive()
 }
 
+/// Parámetro de la URL; acepta también su nombre anterior en español.
 fn query_param(url: &Url, key: &str) -> Option<String> {
-    url.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned())
+    let alias = match key {
+        "view" => "vista",
+        "all" => "todas",
+        "today" => "hoy",
+        _ => key,
+    };
+    url.query_pairs().find(|(k, _)| k == key || k == alias).map(|(_, v)| v.into_owned())
 }
 
 /// Id corto de 5 caracteres, como en los `.md` (`🆔 a1b2c`). No es secreto.
@@ -122,17 +132,17 @@ fn db(env: &Env) -> Result<Db> {
 
 #[derive(Serialize)]
 struct GroupOut {
-    titulo: Option<String>,
-    tareas: Vec<TaskDto>,
+    title: Option<String>,
+    tasks: Vec<TaskDto>,
 }
 
 async fn list(req: &Request, env: &Env) -> ApiResult {
     let url = req.url()?;
-    let vista = query_param(&url, "vista").unwrap_or_else(|| "hoy".into());
-    let view = View::parse(&vista).ok_or_else(|| {
-        bad(format!("Vista desconocida «{vista}». Usa: hoy, inbox, proximos, todas, +Proyecto, #etiqueta"))
+    let name = query_param(&url, "view").unwrap_or_else(|| "today".into());
+    let view = View::parse(&name).ok_or_else(|| {
+        bad(format!("Vista desconocida «{name}». Usa: today, inbox, upcoming, all, +Proyecto, #etiqueta"))
     })?;
-    let show_done = query_param(&url, "todas").is_some_and(|v| v == "1" || v == "true");
+    let show_done = query_param(&url, "all").is_some_and(|v| v == "1" || v == "true");
     let q = query_param(&url, "q").unwrap_or_default();
     let today = today(&url, env);
     let db = db(env)?;
@@ -142,28 +152,33 @@ async fn list(req: &Request, env: &Env) -> ApiResult {
     let groups: Vec<GroupOut> = views::build(&indexed, &projects, &view, today, show_done, &q)
         .into_iter()
         .map(|g| GroupOut {
-            titulo: g.title,
-            tareas: g.items.iter().map(|&i| TaskDto::from(&tasks[i])).collect(),
+            title: g.title,
+            tasks: g.items.iter().map(|&i| TaskDto::from(&tasks[i])).collect(),
         })
         .collect();
-    json_ok(&json!({ "vista": view.title(), "hoy": today, "grupos": groups }))
+    json_ok(&json!({ "view": view.title(), "today": today, "groups": groups }))
 }
 
 #[derive(Deserialize)]
 struct AddBody {
-    texto: String,
-    proyecto: Option<String>,
+    #[serde(alias = "texto")]
+    text: String,
+    #[serde(alias = "proyecto")]
+    project: Option<String>,
+    #[serde(default)]
+    description: String,
 }
 
 async fn add(mut req: Request, env: &Env) -> ApiResult {
-    let body: AddBody = req.json().await.map_err(|_| bad("Se esperaba {\"texto\": \"…\"}"))?;
+    let body: AddBody = req.json().await.map_err(|_| bad("Se esperaba {\"text\": \"…\"}"))?;
     let today = today(&req.url()?, env);
-    let q = parse_quick(&body.texto, today);
+    let q = parse_quick(&body.text, today);
     if q.text.is_empty() {
         return Err(bad("La tarea necesita texto"));
     }
     let db = db(env)?;
-    let mut t = q.into_task(body.proyecto.as_deref().unwrap_or(INBOX));
+    let mut t = q.into_task(body.project.as_deref().unwrap_or(INBOX));
+    t.description = body.description.trim().to_string();
     t.project = db.canonical_project(&t.project).await?;
     t.id = Some(unique_id(&db).await?);
     db.add_project(&t.project).await?;
@@ -174,13 +189,19 @@ async fn add(mut req: Request, env: &Env) -> ApiResult {
 #[derive(Deserialize)]
 struct EditBody {
     /// Captura rápida. Por defecto cambia solo lo escrito.
-    texto: Option<String>,
-    /// `true`: reemplaza todo con `texto` (como editar la línea en la TUI).
+    #[serde(alias = "texto")]
+    text: Option<String>,
+    /// `true`: reemplaza todo con `text` (como editar la línea en la TUI).
+    #[serde(default, alias = "completo")]
+    full: bool,
+    /// Quita fecha, hora y repetición.
+    #[serde(default, alias = "sin_fecha")]
+    no_date: bool,
+    /// Quita la fecha límite.
     #[serde(default)]
-    completo: bool,
-    /// Quita fecha y repetición.
-    #[serde(default)]
-    sin_fecha: bool,
+    no_deadline: bool,
+    /// Reemplaza la descripción.
+    description: Option<String>,
 }
 
 async fn edit(mut req: Request, env: &Env, id: &str) -> ApiResult {
@@ -188,9 +209,9 @@ async fn edit(mut req: Request, env: &Env, id: &str) -> ApiResult {
     let today = today(&req.url()?, env);
     let db = db(env)?;
     let mut t = db.get(id).await?.ok_or_else(|| not_found(id))?;
-    if let Some(texto) = &body.texto {
-        let q = parse_quick(texto, today);
-        if body.completo {
+    if let Some(text) = &body.text {
+        let q = parse_quick(text, today);
+        if body.full {
             if q.text.is_empty() {
                 return Err(bad("La tarea necesita texto"));
             }
@@ -199,9 +220,16 @@ async fn edit(mut req: Request, env: &Env, id: &str) -> ApiResult {
             q.apply_partial(&mut t);
         }
     }
-    if body.sin_fecha {
+    if body.no_date {
         t.due = None;
+        t.time = None;
         t.recurrence = None;
+    }
+    if body.no_deadline {
+        t.deadline = None;
+    }
+    if let Some(d) = &body.description {
+        t.description = d.trim().to_string();
     }
     t.project = db.canonical_project(&t.project).await?;
     db.add_project(&t.project).await?;
@@ -238,20 +266,20 @@ async fn toggle(req: &Request, env: &Env, id: &str) -> ApiResult {
         let mut t = t;
         t.set_done(false, today);
         db.save(&t).await?;
-        return json_ok(&json!({ "tarea": TaskDto::from(&t), "completada": false }));
+        return json_ok(&json!({ "task": TaskDto::from(&t), "completed": false }));
     }
     match t.complete(today, unique_id(&db).await?) {
         Completion::Simple(done) => {
             db.save(&done).await?;
-            json_ok(&json!({ "tarea": TaskDto::from(&done), "completada": true }))
+            json_ok(&json!({ "task": TaskDto::from(&done), "completed": true }))
         }
         Completion::Recurring { next, done } => {
             db.save(&done).await?;
             db.save(&next).await?;
             json_ok(&json!({
-                "tarea": TaskDto::from(&next),
-                "completada": true,
-                "ocurrencia": TaskDto::from(&done),
+                "task": TaskDto::from(&next),
+                "completed": true,
+                "occurrence": TaskDto::from(&done),
             }))
         }
     }
@@ -259,17 +287,19 @@ async fn toggle(req: &Request, env: &Env, id: &str) -> ApiResult {
 
 #[derive(Deserialize)]
 struct NoteBody {
-    texto: String,
+    #[serde(alias = "texto")]
+    text: String,
 }
 
 async fn add_note(mut req: Request, env: &Env, id: &str) -> ApiResult {
-    let body: NoteBody = req.json().await.map_err(|_| bad("Se esperaba {\"texto\": \"…\"}"))?;
-    if body.texto.trim().is_empty() {
+    let body: NoteBody = req.json().await.map_err(|_| bad("Se esperaba {\"text\": \"…\"}"))?;
+    if body.text.trim().is_empty() {
         return Err(bad("La nota está vacía"));
     }
+    let today = today(&req.url()?, env);
     let db = db(env)?;
     let mut t = db.get(id).await?.ok_or_else(|| not_found(id))?;
-    t.notes.push(body.texto.trim().to_string());
+    t.notes.push(Note::new(&body.text, Some(today)));
     db.save(&t).await?;
     json_ok(&TaskDto::from(&t))
 }
@@ -283,7 +313,7 @@ async fn projects(env: &Env) -> ApiResult {
         .into_iter()
         .map(|p| {
             let open = tasks.iter().filter(|t| !t.done && t.project.eq_ignore_ascii_case(&p)).count();
-            json!({ "nombre": p, "pendientes": open })
+            json!({ "name": p, "open": open })
         })
         .collect();
     json_ok(&out)
@@ -291,17 +321,18 @@ async fn projects(env: &Env) -> ApiResult {
 
 #[derive(Deserialize)]
 struct ProjectBody {
-    nombre: String,
+    #[serde(alias = "nombre")]
+    name: String,
 }
 
 async fn create_project(mut req: Request, env: &Env) -> ApiResult {
-    let body: ProjectBody = req.json().await.map_err(|_| bad("Se esperaba {\"nombre\": \"…\"}"))?;
-    let name = body.nombre.trim();
+    let body: ProjectBody = req.json().await.map_err(|_| bad("Se esperaba {\"name\": \"…\"}"))?;
+    let name = body.name.trim();
     if name.is_empty() {
         return Err(bad("El proyecto necesita nombre"));
     }
     db(env)?.add_project(name).await?;
-    Ok(Response::from_json(&json!({ "nombre": name }))?.with_status(201))
+    Ok(Response::from_json(&json!({ "name": name }))?.with_status(201))
 }
 
 async fn labels(env: &Env) -> ApiResult {
@@ -312,31 +343,32 @@ async fn labels(env: &Env) -> ApiResult {
             *m.entry(l.clone()).or_default() += 1;
         }
     }
-    let out: Vec<_> = m.into_iter().map(|(l, n)| json!({ "nombre": l, "pendientes": n })).collect();
+    let out: Vec<_> = m.into_iter().map(|(l, n)| json!({ "name": l, "open": n })).collect();
     json_ok(&out)
 }
 
 async fn export(env: &Env) -> ApiResult {
     let db = db(env)?;
     let tasks: Vec<TaskDto> = db.all().await?.iter().map(TaskDto::from).collect();
-    json_ok(&json!({ "proyectos": db.projects().await?, "tareas": tasks }))
+    json_ok(&json!({ "projects": db.projects().await?, "tasks": tasks }))
 }
 
 #[derive(Deserialize)]
 struct ImportBody {
-    #[serde(default)]
-    proyectos: Vec<String>,
-    tareas: Vec<TaskDto>,
+    #[serde(default, alias = "proyectos")]
+    projects: Vec<String>,
+    #[serde(alias = "tareas")]
+    tasks: Vec<TaskDto>,
 }
 
 async fn import(mut req: Request, env: &Env) -> ApiResult {
-    let body: ImportBody = req.json().await.map_err(|_| bad("Se esperaba {\"tareas\": […]}"))?;
+    let body: ImportBody = req.json().await.map_err(|_| bad("Se esperaba {\"tasks\": […]}"))?;
     let db = db(env)?;
-    for p in &body.proyectos {
+    for p in &body.projects {
         db.add_project(p).await?;
     }
     let mut n = 0;
-    for dto in &body.tareas {
+    for dto in &body.tasks {
         let mut t = Task::from(dto);
         if t.id.is_none() {
             t.id = Some(unique_id(&db).await?);
@@ -348,7 +380,7 @@ async fn import(mut req: Request, env: &Env) -> ApiResult {
         db.save(&t).await?;
         n += 1;
     }
-    json_ok(&json!({ "importadas": n }))
+    json_ok(&json!({ "imported": n }))
 }
 
 async fn route(req: Request, env: Env) -> ApiResult {
@@ -381,7 +413,7 @@ async fn route(req: Request, env: Env) -> ApiResult {
         }
         (Method::Delete, ["tasks", id]) => {
             if db(&env)?.delete(id).await? {
-                json_ok(&json!({ "eliminada": id }))
+                json_ok(&json!({ "deleted": id }))
             } else {
                 Err(not_found(id))
             }

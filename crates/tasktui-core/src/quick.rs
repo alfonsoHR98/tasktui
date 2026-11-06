@@ -137,6 +137,54 @@ fn try_special(toks: &[&str], i: usize, today: NaiveDate) -> Option<(usize, Effe
     date_lit(&low, today).map(|d| (1, Effect::Due(d)))
 }
 
+impl Quick {
+    /// Tarea nueva. Sin `+Proyecto`, va a `default_project`.
+    pub fn into_task(self, default_project: &str) -> Task {
+        let mut t = Task::new(&self.text);
+        t.labels = self.labels;
+        t.priority = self.priority.unwrap_or(4);
+        t.due = self.due;
+        t.recurrence = self.recurrence;
+        t.project = self.project.unwrap_or_else(|| default_project.to_string());
+        t
+    }
+
+    /// Cambia solo lo que se escribió (`tasktui edit id viernes p2`).
+    pub fn apply_partial(self, t: &mut Task) {
+        if !self.text.is_empty() {
+            t.text = self.text;
+        }
+        if !self.labels.is_empty() {
+            t.labels = self.labels;
+        }
+        if let Some(p) = self.priority {
+            t.priority = p;
+        }
+        if self.due.is_some() {
+            t.due = self.due;
+        }
+        if self.recurrence.is_some() {
+            t.recurrence = self.recurrence;
+        }
+        if let Some(p) = self.project {
+            t.project = p;
+        }
+    }
+
+    /// Reemplaza todo con lo escrito (editar la línea completa, como en la
+    /// TUI con [`to_quick`]). El proyecto solo cambia si se escribe `+Proyecto`.
+    pub fn apply_full(self, t: &mut Task) {
+        t.text = self.text;
+        t.labels = self.labels;
+        t.priority = self.priority.unwrap_or(4);
+        t.due = self.due;
+        t.recurrence = self.recurrence;
+        if let Some(p) = self.project {
+            t.project = p;
+        }
+    }
+}
+
 pub fn parse_quick(input: &str, today: NaiveDate) -> Quick {
     let toks: Vec<&str> = input.split_whitespace().collect();
     let mut q = Quick::default();

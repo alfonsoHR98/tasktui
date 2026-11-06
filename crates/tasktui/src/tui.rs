@@ -545,16 +545,7 @@ impl App {
                     return;
                 }
                 self.mutate(|s| {
-                    s.update(&id, |t| {
-                        t.text = q.text;
-                        t.labels = q.labels;
-                        t.priority = q.priority.unwrap_or(4);
-                        t.due = q.due;
-                        t.recurrence = q.recurrence;
-                        if let Some(p) = q.project {
-                            t.project = p;
-                        }
-                    })?;
+                    s.update(&id, |t| q.apply_full(t))?;
                     Ok(("Guardada".into(), None))
                 });
             }

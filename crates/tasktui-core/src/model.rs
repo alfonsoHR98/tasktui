@@ -214,6 +214,34 @@ impl Task {
     pub fn is_overdue(&self, today: NaiveDate) -> bool {
         !self.done && self.due.is_some_and(|d| d < today)
     }
+
+    /// Completa una tarea pendiente. Si se repite, la pendiente conserva su id
+    /// y avanza a la siguiente fecha, y se crea una ocurrencia hecha con
+    /// `done_id` (como Obsidian Tasks). Las notas se quedan en la pendiente.
+    pub fn complete(&self, today: NaiveDate, done_id: String) -> Completion {
+        let Some(rec) = &self.recurrence else {
+            let mut t = self.clone();
+            t.set_done(true, today);
+            return Completion::Simple(t);
+        };
+        let mut next = self.clone();
+        next.due = Some(rec.next(self.due.unwrap_or(today)));
+        let mut done = self.clone();
+        done.id = Some(done_id);
+        done.notes.clear();
+        done.set_done(true, today);
+        Completion::Recurring { next, done }
+    }
+}
+
+/// Resultado de [`Task::complete`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Completion {
+    /// La tarea, ya completada.
+    Simple(Task),
+    /// `next`: la misma tarea (mismo id) con la siguiente fecha.
+    /// `done`: la ocurrencia completada, con id nuevo.
+    Recurring { next: Task, done: Task },
 }
 
 #[cfg(test)]
@@ -232,6 +260,28 @@ mod tests {
         let r = Recurrence::parse_obsidian("every monday").unwrap();
         assert_eq!(r.to_obsidian(), "every week on Monday");
         assert_eq!(r.to_es(), "cada lunes");
+    }
+
+    #[test]
+    fn completar() {
+        let mut t = Task::new("Gym");
+        t.id = Some("aaaaa".into());
+        t.notes = vec!["rutina A".into()];
+        t.due = Some(d("2026-11-05"));
+        match t.complete(d("2026-11-06"), "bbbbb".into()) {
+            Completion::Simple(h) => assert!(h.done && h.done_date == Some(d("2026-11-06"))),
+            c => panic!("{c:?}"),
+        }
+        t.recurrence = Recurrence::parse_obsidian("every week on Monday");
+        match t.complete(d("2026-11-06"), "bbbbb".into()) {
+            Completion::Recurring { next, done } => {
+                assert_eq!((next.id.as_deref(), next.done, next.due), (Some("aaaaa"), false, Some(d("2026-11-09"))));
+                assert_eq!(next.notes, vec!["rutina A"]);
+                assert_eq!((done.id.as_deref(), done.done), (Some("bbbbb"), true));
+                assert!(done.notes.is_empty());
+            }
+            c => panic!("{c:?}"),
+        }
     }
 
     #[test]

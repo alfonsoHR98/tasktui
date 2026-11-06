@@ -200,12 +200,8 @@ fn main() -> Result<()> {
             if q.text.is_empty() {
                 bail!("La tarea necesita texto");
             }
-            let mut t = Task::new(&q.text);
-            t.labels = q.labels;
-            t.priority = q.priority.unwrap_or(4);
-            t.due = q.due;
-            t.recurrence = q.recurrence;
-            let project = q.project.unwrap_or_else(|| INBOX.into());
+            let t = q.into_task(INBOX);
+            let project = t.project.clone();
             let id = store.add(t, &project)?;
             let t = store.task_at(store.find(&id).unwrap()).unwrap();
             if json {
@@ -255,24 +251,7 @@ fn main() -> Result<()> {
         Cmd::Edit { id, text, sin_fecha } => {
             let q = quick::parse_quick(&text.join(" "), today);
             store.update(&id, |t| {
-                if !q.text.is_empty() {
-                    t.text = q.text;
-                }
-                if !q.labels.is_empty() {
-                    t.labels = q.labels;
-                }
-                if let Some(p) = q.priority {
-                    t.priority = p;
-                }
-                if q.due.is_some() {
-                    t.due = q.due;
-                }
-                if q.recurrence.is_some() {
-                    t.recurrence = q.recurrence;
-                }
-                if let Some(p) = q.project {
-                    t.project = p;
-                }
+                q.apply_partial(t);
                 if sin_fecha {
                     t.due = None;
                     t.recurrence = None;

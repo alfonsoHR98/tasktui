@@ -17,7 +17,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use chrono::NaiveDate;
 
 use crate::markdown;
-use crate::model::Task;
+use crate::model::{Completion, Task};
 use crate::today;
 use crate::views::{self, Group, View};
 
@@ -438,18 +438,13 @@ impl Store {
             self.write(pos.0)?;
             return Ok(false);
         }
-        if let Some(rec) = t.recurrence.clone() {
-            let mut next = t.clone();
-            next.due = Some(rec.next(t.due.unwrap_or(today)));
-            t.id = Some(gen_id(&self.ids()));
-            t.set_done(true, today);
-            t.notes.clear();
-            let end = self.block_end(pos);
-            self.set_task(pos, next);
-            self.docs[pos.0].lines.insert(end, Line::Task { task: t, raw: None });
-        } else {
-            t.set_done(true, today);
-            self.set_task(pos, t);
+        match t.complete(today, gen_id(&self.ids())) {
+            Completion::Simple(done) => self.set_task(pos, done),
+            Completion::Recurring { next, done } => {
+                let end = self.block_end(pos);
+                self.set_task(pos, next);
+                self.docs[pos.0].lines.insert(end, Line::Task { task: done, raw: None });
+            }
         }
         self.write(pos.0)?;
         Ok(true)

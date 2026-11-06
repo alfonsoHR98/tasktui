@@ -83,6 +83,40 @@ tasktui sync --agente on  # y cada 10 min con launchd (--cada N para cambiarlo)
   `~/Library/Logs/tasktui-sync.log`).
 - La relación tarea ↔ recordatorio vive en `~/.config/tasktui/recordatorios.json`.
 
+## Servidor (Cloudflare Workers + D1)
+
+`crates/tasktui-worker` publica una API JSON con la misma lógica que la TUI
+(captura rápida, vistas, completar con repeticiones). Corre en el plan gratuito
+de Cloudflare y está siempre disponible.
+
+```sh
+cargo install worker-build --version 0.8.7 --locked
+cd crates/tasktui-worker
+npx wrangler d1 create tasktui                 # copia el database_id a wrangler.jsonc
+npx wrangler d1 migrations apply tasktui --remote
+npx wrangler secret put API_TOKEN              # un token largo y aleatorio
+npx wrangler deploy                            # cambia `routes` por tu dominio
+```
+
+Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/tasks?vista=hoy&todas=1&q=texto&hoy=AAAA-MM-DD` | vista agrupada (`hoy`, `inbox`, `proximos`, `todas`, `+Proyecto`, `#etiqueta`) |
+| GET | `/api/tasks/:id` | una tarea |
+| POST | `/api/tasks` `{"texto": "Pagar luz mañana p1 +Finanzas"}` | añadir con captura rápida |
+| PATCH | `/api/tasks/:id` `{"texto": "viernes p2"}` | cambia solo lo escrito (`"completo": true` reemplaza todo; `"sin_fecha": true`) |
+| POST | `/api/tasks/:id/done` | completar / reabrir |
+| POST | `/api/tasks/:id/notes` `{"texto": "…"}` | añadir nota |
+| DELETE | `/api/tasks/:id` | eliminar |
+| GET / POST | `/api/projects` | listar / crear `{"nombre": "…"}` |
+| GET | `/api/labels` | etiquetas con pendientes |
+| GET | `/api/export` · POST `/api/import` | respaldo y carga (conserva ids) |
+
+«Hoy» usa `TZ_OFFSET_MINUTES` (en `wrangler.jsonc`) si el cliente no manda `?hoy=`.
+Prueba local: `npx wrangler d1 migrations apply tasktui --local`, crea
+`.dev.vars` con `API_TOKEN=...` y `npx wrangler dev`.
+
 ## Captura rápida
 
 ```
@@ -140,7 +174,7 @@ tasktui list --json                        # cualquier comando acepta --json
 
 ## Código
 
-Workspace de Cargo con dos crates:
+Workspace de Cargo con tres crates (el Worker solo compila a wasm y `cargo test` no lo incluye):
 
 **`crates/tasktui-core`**: el núcleo. No usa reloj, archivos ni red (quien
 llama pasa la fecha de hoy), así que compila igual a nativo que a wasm para el
@@ -154,6 +188,8 @@ servidor.
 | `markdown.rs` | leer/escribir una línea en formato Obsidian Tasks |
 | `views.rs` | vistas Inbox/Hoy/Próximos/Todas/Proyecto/Etiqueta |
 | `dto.rs` | la tarea en JSON: contrato de `--json` y de la API |
+
+**`crates/tasktui-worker`**: el servidor (API sobre Cloudflare Workers + D1, ver arriba).
 
 **`crates/tasktui`**: la TUI y la CLI.
 
@@ -182,7 +218,8 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** espejo hacia Recordatorios (`tasktui sync`).
 - **Hecho:** captura desde Recordatorios/Siri y sync periódico con launchd.
 - **Hecho:** núcleo `tasktui-core` separado, compila a wasm.
-- **En curso — servidor:** Cloudflare Worker + D1 como fuente de verdad, TUI/CLI
+- **Hecho:** servidor con API en Cloudflare Workers + D1.
+- **En curso:** TUI/CLI
   en modo remoto y página web instalable (PWA) para el celular y cualquier
   navegador, con avisos push. `tasktui export` a `.md` como respaldo.
 - **Después:** horas en las fechas (`mañana 18:00`) para avisos a una hora exacta.

@@ -7,6 +7,7 @@ const MON_ABBR: [&str; 12] = [
     "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
 ];
 
+/// Día de la semana en español o en inglés.
 pub fn weekday_es(s: &str) -> Option<Weekday> {
     Some(match s {
         "lunes" => Weekday::Mon,
@@ -16,6 +17,14 @@ pub fn weekday_es(s: &str) -> Option<Weekday> {
         "viernes" => Weekday::Fri,
         "sábado" | "sabado" => Weekday::Sat,
         "domingo" => Weekday::Sun,
+        // También en inglés.
+        "monday" => Weekday::Mon,
+        "tuesday" => Weekday::Tue,
+        "wednesday" => Weekday::Wed,
+        "thursday" => Weekday::Thu,
+        "friday" => Weekday::Fri,
+        "saturday" => Weekday::Sat,
+        "sunday" => Weekday::Sun,
         _ => return None,
     })
 }

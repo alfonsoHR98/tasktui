@@ -8,7 +8,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, Ke
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Cell, Clear, List, ListItem, ListState, Paragraph, Row as TableRow, Table, TableState, Wrap};
 use ratatui::{DefaultTerminal, Frame};
 use unicode_width::UnicodeWidthStr;
 
@@ -134,7 +134,7 @@ pub struct App {
     task_rows: Vec<usize>,
     sel: usize,
     sel_id: Option<String>,
-    list_state: ListState,
+    list_state: TableState,
     focus: Focus,
     mode: Mode,
     input: Input,
@@ -144,6 +144,8 @@ pub struct App {
     pending_g: bool,
     /// Tarea cuya descripción se editará en `$EDITOR` (fuera de la TUI).
     pending_editor: Option<String>,
+    /// Opción marcada del autocompletado.
+    sugg: usize,
     undo: Vec<Snapshot>,
     quit: bool,
 }
@@ -168,7 +170,7 @@ impl App {
             task_rows: vec![],
             sel: 0,
             sel_id: None,
-            list_state: ListState::default(),
+            list_state: TableState::default(),
             focus: Focus::List,
             mode: Mode::Normal,
             input: Input::default(),
@@ -177,6 +179,7 @@ impl App {
             msg: String::new(),
             pending_g: false,
             pending_editor: None,
+            sugg: 0,
             undo: vec![],
             quit: false,
         };
@@ -311,7 +314,7 @@ impl App {
         self.view = v;
         self.sel = 0;
         self.sel_id = None;
-        self.list_state = ListState::default();
+        self.list_state = TableState::default();
         self.refresh();
     }
 
@@ -367,6 +370,48 @@ impl App {
         self.refresh();
     }
 
+    /// Autocompletado de la palabra en el cursor: `+Proyecto`, `#etiqueta` o
+    /// `@etiqueta`. Devuelve dónde empieza la palabra y las opciones (ya con
+    /// su prefijo y `_` en lugar de espacios). Busca en cualquier parte del nombre.
+    fn completions(&self) -> Option<(usize, Vec<String>)> {
+        if !matches!(self.mode, Mode::Input(InputKind::Add | InputKind::Edit(_))) {
+            return None;
+        }
+        let buf = &self.input.buf;
+        let start = buf[..self.input.cur].iter().rposition(|c| *c == ' ').map(|i| i + 1).unwrap_or(0);
+        let word: String = buf[start..self.input.cur].iter().collect();
+        let mut chars = word.chars();
+        let prefix = chars.next()?;
+        let partial = chars.as_str().replace('_', " ").to_lowercase();
+        let names: Vec<String> = match prefix {
+            '+' => self.store.projects(),
+            '#' | '@' => self.store.labels().into_iter().map(|(l, _)| l).collect(),
+            _ => return None,
+        };
+        let mut found: Vec<&String> = names
+            .iter()
+            .filter(|n| {
+                let low = n.to_lowercase();
+                low.contains(&partial) && low != partial
+            })
+            .collect();
+        found.sort_by_key(|n| (!n.to_lowercase().starts_with(&partial), n.to_lowercase()));
+        found.truncate(6);
+        if found.is_empty() {
+            return None;
+        }
+        Some((start, found.into_iter().map(|n| format!("{prefix}{}", n.replace(' ', "_"))).collect()))
+    }
+
+    fn accept_completion(&mut self) {
+        let Some((start, opts)) = self.completions() else { return };
+        let chosen: Vec<char> = opts[self.sugg.min(opts.len() - 1)].chars().chain([' ']).collect();
+        let end = self.input.cur;
+        self.input.buf.splice(start..end, chosen.iter().copied());
+        self.input.cur = start + chosen.len();
+        self.sugg = 0;
+    }
+
     fn default_project(&self) -> String {
         match &self.view {
             View::Project(p) => p.clone(),
@@ -409,7 +454,13 @@ impl App {
                         self.mode = Mode::Normal;
                         self.submit(kind);
                     }
+                    KeyCode::Tab => self.accept_completion(),
+                    KeyCode::Down | KeyCode::Up if self.completions().is_some() => {
+                        let n = self.completions().map(|(_, c)| c.len()).unwrap_or(1);
+                        self.sugg = if k.code == KeyCode::Down { (self.sugg + 1) % n } else { (self.sugg + n - 1) % n };
+                    }
                     _ => {
+                        self.sugg = 0;
                         self.input.handle(k);
                         if matches!(kind, InputKind::Search) {
                             self.query = self.input.text();
@@ -628,12 +679,15 @@ impl App {
         let [main, status] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let side_w = (main.width / 3).min(26);
         let [side, right] = Layout::horizontal([Constraint::Length(side_w), Constraint::Min(10)]).areas(main);
-        let extra = self
-            .selected()
-            .map(|t| t.notes.len() + t.description.lines().filter(|l| !l.trim().is_empty()).count())
-            .unwrap_or(0) as u16;
-        let detail_h = 6 + extra.min(8);
-        let [list, detail] = Layout::vertical([Constraint::Min(3), Constraint::Length(detail_h)]).areas(right);
+        // Terminal ancha: detalle a la derecha. Angosta: debajo, del alto que necesite.
+        let [list, detail] = if right.width >= 120 {
+            let dw = (right.width * 2 / 5).clamp(44, 70);
+            Layout::horizontal([Constraint::Min(40), Constraint::Length(dw)]).areas(right)
+        } else {
+            let lines = self.selected().map(|t| self.detail_lines(t).len()).unwrap_or(0) as u16;
+            let h = (lines + 2).clamp(6, right.height / 2);
+            Layout::vertical([Constraint::Min(3), Constraint::Length(h)]).areas(right)
+        };
         self.draw_side(f, side);
         self.draw_list(f, list);
         self.draw_detail(f, detail);
@@ -697,50 +751,72 @@ impl App {
         f.render_stateful_widget(list, area, &mut st);
     }
 
-    fn task_line(&self, t: &Task) -> Line<'static> {
+    /// Celdas de una tarea en la tabla: texto (con etiquetas), fecha, límite,
+    /// proyecto e íconos. `text_w` es el ancho de la columna de texto.
+    fn task_cells(&self, t: &Task, text_w: usize, show_project: bool) -> Vec<Cell<'static>> {
         let today = self.today;
-        let mut spans = vec![];
         let depth = t.indent.replace('\t', "  ").len() / 2;
-        spans.push(Span::raw(" ".repeat(depth * 2 + 1)));
+        let indent = " ".repeat(depth * 2);
         let check = if t.done { "✓ " } else { "○ " };
-        spans.push(Span::styled(check, Style::new().fg(prio_color(t.priority)).add_modifier(Modifier::BOLD)));
         let text_style = if t.done {
             Style::new().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT)
         } else {
             Style::new()
         };
-        spans.push(Span::styled(t.text.clone(), text_style));
-        if let Some(d) = t.due {
-            let color = if t.is_overdue(today) {
-                Color::Red
-            } else if d == today {
-                Color::Green
-            } else {
-                Color::Cyan
-            };
-            let mut when = dates::rel(d, today);
-            if let Some(h) = t.time {
-                when.push_str(&format!(" {}", h.format("%H:%M")));
+        // Texto + etiquetas; si no caben, las etiquetas se quitan y el texto se corta con «…».
+        let labels: String = t.labels.iter().map(|l| format!("  #{l}")).collect();
+        let room = text_w.saturating_sub(indent.width() + check.width());
+        let (text, labels) = if t.text.width() + labels.width() <= room {
+            (t.text.clone(), labels)
+        } else {
+            (truncate(&t.text, room), String::new())
+        };
+        let text_cell = Cell::from(Line::from(vec![
+            Span::raw(indent),
+            Span::styled(check, Style::new().fg(prio_color(t.priority)).add_modifier(Modifier::BOLD)),
+            Span::styled(text, text_style),
+            Span::styled(labels, Style::new().fg(Color::Magenta)),
+        ]));
+
+        let when = match t.due {
+            Some(d) => {
+                let color = if t.done {
+                    Color::DarkGray
+                } else if d < today {
+                    Color::Red
+                } else if d == today {
+                    Color::Green
+                } else {
+                    Color::Cyan
+                };
+                let mut s = dates::rel(d, today);
+                if let Some(h) = t.time {
+                    s.push_str(&format!(" {}", h.format("%H:%M")));
+                }
+                Cell::from(Span::styled(s, Style::new().fg(color)))
             }
-            spans.push(Span::styled(format!("  {when}"), Style::new().fg(color)));
+            None => Cell::from(""),
+        };
+        let deadline = match t.deadline.filter(|_| !t.done) {
+            Some(d) => Cell::from(Span::styled(format!("🎯 {}", dates::rel(d, today)), deadline_style(d, today))),
+            None => Cell::from(""),
+        };
+        let mut icons = vec![];
+        if !t.description.trim().is_empty() {
+            icons.push(Span::raw("📝"));
         }
-        if let Some(d) = t.deadline.filter(|_| !t.done) {
-            spans.push(Span::styled(format!("  🎯 {}", dates::rel(d, today)), deadline_style(d, today)));
-        }
-        if !t.description.trim().is_empty() || !t.notes.is_empty() {
-            spans.push(Span::styled(" ≡", Style::new().fg(Color::DarkGray)));
+        if !t.notes.is_empty() {
+            icons.push(Span::styled(format!("💬{}", t.notes.len()), Style::new().fg(Color::DarkGray)));
         }
         if t.recurrence.is_some() {
-            spans.push(Span::styled(" ↻", Style::new().fg(Color::Cyan)));
+            icons.push(Span::styled("↻", Style::new().fg(Color::Cyan)));
         }
-        for l in &t.labels {
-            spans.push(Span::styled(format!("  #{l}"), Style::new().fg(Color::Magenta)));
+        let mut cells = vec![text_cell, when, deadline];
+        if show_project {
+            cells.push(Cell::from(Span::styled(truncate(&t.project, 18), Style::new().fg(Color::DarkGray))));
         }
-        let in_project = matches!(self.view, View::Project(_) | View::Inbox | View::All);
-        if !in_project {
-            spans.push(Span::styled(format!("  · {}", t.project), Style::new().fg(Color::DarkGray)));
-        }
-        Line::from(spans)
+        cells.push(Cell::from(Line::from(icons)));
+        cells
     }
 
     fn draw_list(&mut self, f: &mut Frame, area: Rect) {
@@ -762,23 +838,69 @@ impl App {
             );
             return;
         }
-        let items: Vec<ListItem> = self
+        // Columnas fijas a la derecha; el texto se queda con el resto.
+        let show_project = !matches!(self.view, View::Project(_) | View::Inbox | View::All);
+        let tasks: Vec<&Task> = self
+            .rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Task(p) => self.store.task_at(*p),
+                Row::Header(_) => None,
+            })
+            .collect();
+        // Cada columna mide lo que necesita su contenido más largo.
+        let today = self.today;
+        let when_w = tasks
+            .iter()
+            .filter_map(|t| t.due.map(|d| dates::rel(d, today).width() + if t.time.is_some() { 6 } else { 0 }))
+            .max()
+            .unwrap_or(0);
+        let dl_w = tasks
+            .iter()
+            .filter(|t| !t.done)
+            .filter_map(|t| t.deadline.map(|d| dates::rel(d, today).width() + 3))
+            .max()
+            .unwrap_or(0);
+        let proj_w = if show_project { tasks.iter().map(|t| t.project.width()).max().unwrap_or(0).min(18) } else { 0 };
+        let icon_w = tasks
+            .iter()
+            .map(|t| {
+                (if t.description.trim().is_empty() { 0 } else { 2 })
+                    + if t.notes.is_empty() { 0 } else { 2 + t.notes.len().to_string().len() }
+                    + t.recurrence.is_some() as usize
+            })
+            .max()
+            .unwrap_or(0);
+        let inner_w = area.width.saturating_sub(2) as usize;
+        let cols = 3 + show_project as usize; // separaciones de 1 espacio
+        let text_w = inner_w.saturating_sub(when_w + dl_w + proj_w + icon_w + cols + 1).max(10);
+        let mut widths = vec![
+            Constraint::Length(text_w as u16),
+            Constraint::Length(when_w as u16),
+            Constraint::Length(dl_w as u16),
+        ];
+        if show_project {
+            widths.push(Constraint::Length(proj_w as u16));
+        }
+        widths.push(Constraint::Length(icon_w as u16));
+
+        let rows: Vec<TableRow> = self
             .rows
             .iter()
             .map(|r| match r {
-                Row::Header(h) => ListItem::new(Line::styled(
+                Row::Header(h) => TableRow::new(vec![Cell::from(Span::styled(
                     format!(" {h}"),
                     Style::new().fg(ACCENT).add_modifier(Modifier::BOLD),
-                )),
+                ))]),
                 Row::Task(p) => match self.store.task_at(*p) {
-                    Some(t) => ListItem::new(self.task_line(t)),
-                    None => ListItem::new(""),
+                    Some(t) => TableRow::new(self.task_cells(t, text_w, show_project)),
+                    None => TableRow::new(vec![Cell::from("")]),
                 },
             })
             .collect();
         let hl = if focused { Style::new().bg(SEL_BG) } else { Style::new() };
-        let list = List::new(items).block(block).highlight_style(hl);
-        f.render_stateful_widget(list, area, &mut self.list_state);
+        let table = Table::new(rows, widths).block(block).column_spacing(1).row_highlight_style(hl);
+        f.render_stateful_widget(table, area, &mut self.list_state);
     }
 
     fn draw_detail(&self, f: &mut Frame, area: Rect) {
@@ -787,51 +909,86 @@ impl App {
             f.render_widget(block, area);
             return;
         };
+        f.render_widget(Paragraph::new(self.detail_lines(t)).block(block).wrap(Wrap { trim: false }), area);
+    }
+
+    /// Detalle de la tarea: encabezado, campos con etiqueta, descripción y notas.
+    fn detail_lines(&self, t: &Task) -> Vec<Line<'static>> {
+        let today = self.today;
         let dim = Style::new().fg(Color::DarkGray);
+        // Etiquetas alineadas por ancho visible (los emoji ocupan 2 columnas).
+        let label = |s: &str| Span::styled(format!("{s}{}", " ".repeat(14usize.saturating_sub(s.width()))), dim);
+        let section = |s: String| Line::styled(s, Style::new().fg(ACCENT).add_modifier(Modifier::BOLD));
         let mut where_ = t.project.clone();
         if let Some(s) = &t.section {
             where_.push_str(&format!(" › {s}"));
         }
-        let mut meta = vec![];
-        if let Some(d) = t.due {
-            let mut when = dates::long(d, self.today);
-            if let Some(h) = t.time {
-                when.push_str(&format!(" · {}", h.format("%H:%M")));
-            }
-            meta.push(format!("📅 {when}"));
-        }
-        if let Some(d) = t.deadline {
-            meta.push(format!("🎯 límite {}", dates::long(d, self.today)));
-        }
-        if t.priority < 4 {
-            meta.push(format!("p{}", t.priority));
-        }
-        if let Some(r) = &t.recurrence {
-            meta.push(format!("↻ {}", r.to_es()));
-        }
-        if !t.labels.is_empty() {
-            meta.push(t.labels.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(" "));
-        }
         let mut lines = vec![
             Line::styled(t.text.clone(), Style::new().add_modifier(Modifier::BOLD)),
             Line::styled(where_, dim),
-            Line::raw(meta.join("   ")),
-            Line::styled(
-                format!("id {}   {}", t.id.as_deref().unwrap_or("—"), t.extra.join(" ")),
-                dim,
-            ),
+            Line::raw(""),
         ];
-        for l in t.description.lines().filter(|l| !l.trim().is_empty()) {
-            lines.push(Line::raw(l.to_string()));
-        }
-        for n in &t.notes {
-            let when = n.date.map(|d| format!("{} · ", dates::rel(d, self.today))).unwrap_or_default();
+        // Fecha sin el «· hoy» de `dates::long`: lo relativo va aparte.
+        let plain = |d: NaiveDate| dates::long(d, today).split(" · ").next().unwrap_or_default().to_string();
+        if let Some(d) = t.due {
+            let mut s = plain(d);
+            if let Some(h) = t.time {
+                s.push_str(&format!(" · {}", h.format("%H:%M")));
+            }
+            let color = if t.done { Color::DarkGray } else if d < today { Color::Red } else if d == today { Color::Green } else { Color::Cyan };
             lines.push(Line::from(vec![
-                Span::styled(format!("› {when}"), dim),
-                Span::raw(n.text.clone()),
+                label("📅 Fecha"),
+                Span::styled(s, Style::new().fg(color)),
+                Span::styled(relative(d, today, t.done), dim),
             ]));
         }
-        f.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: true }), area);
+        if let Some(d) = t.deadline {
+            lines.push(Line::from(vec![
+                label("🎯 Límite"),
+                Span::styled(plain(d), deadline_style(d, today)),
+                Span::styled(relative(d, today, t.done), dim),
+            ]));
+        }
+        if t.priority < 4 {
+            let name = ["alta", "media", "baja"][t.priority as usize - 1];
+            lines.push(Line::from(vec![
+                label("⚑ Prioridad"),
+                Span::styled(format!("p{} · {name}", t.priority), Style::new().fg(prio_color(t.priority))),
+            ]));
+        }
+        if let Some(r) = &t.recurrence {
+            lines.push(Line::from(vec![label("↻ Repite"), Span::raw(r.to_es())]));
+        }
+        if !t.labels.is_empty() {
+            let ls = t.labels.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join("  ");
+            lines.push(Line::from(vec![label("# Etiquetas"), Span::styled(ls, Style::new().fg(Color::Magenta))]));
+        }
+        if t.done {
+            if let Some(d) = t.done_date {
+                lines.push(Line::from(vec![label("✓ Hecha"), Span::raw(dates::long(d, today))]));
+            }
+        }
+        let desc: Vec<&str> = t.description.lines().collect();
+        if !t.description.trim().is_empty() {
+            lines.push(Line::raw(""));
+            lines.push(section("Descripción".into()));
+            lines.extend(desc.iter().map(|l| Line::raw(l.to_string())));
+        }
+        if !t.notes.is_empty() {
+            lines.push(Line::raw(""));
+            lines.push(section(format!("Notas ({})", t.notes.len())));
+            for n in &t.notes {
+                let when = n.date.map(|d| format!("{} · ", dates::rel(d, today))).unwrap_or_default();
+                lines.push(Line::from(vec![Span::styled(format!("› {when}"), dim), Span::raw(n.text.clone())]));
+            }
+        }
+        lines.push(Line::raw(""));
+        let mut foot = format!("id {}", t.id.as_deref().unwrap_or("—"));
+        if !t.extra.is_empty() {
+            foot.push_str(&format!("   {}", t.extra.join(" ")));
+        }
+        lines.push(Line::styled(foot, dim));
+        lines
     }
 
     fn draw_status(&self, f: &mut Frame, area: Rect) {
@@ -852,7 +1009,9 @@ impl App {
     fn draw_input(&self, f: &mut Frame, kind: InputKind) {
         let area = f.area();
         let w = area.width.saturating_sub(4).min(80);
-        let h = 6.min(area.height);
+        let completions = self.completions();
+        let n_sugg = completions.as_ref().map(|(_, c)| c.len() as u16 + 1).unwrap_or(0);
+        let h = (6 + n_sugg).min(area.height);
         let popup = Rect {
             x: area.x + (area.width - w) / 2,
             y: (area.height / 3).min(area.height - h),
@@ -917,6 +1076,17 @@ impl App {
             f.render_widget(Paragraph::new(preview), Rect { y: inner.y + 2, height: 1, ..inner });
             f.render_widget(Paragraph::new(hint), Rect { y: inner.y + 3, height: 1, ..inner });
         }
+        if let Some((_, opts)) = completions {
+            let sel = self.sugg.min(opts.len() - 1);
+            let mut lines = vec![Line::styled("Tab completar · ↑↓ elegir", dim)];
+            for (i, o) in opts.iter().enumerate() {
+                let style = if i == sel { Style::new().bg(SEL_BG).fg(Color::White) } else { Style::new().fg(Color::Gray) };
+                lines.push(Line::styled(format!(" {} {o} ", if i == sel { "›" } else { " " }), style));
+            }
+            let y = inner.y + 4;
+            let h = inner.height.saturating_sub(4);
+            f.render_widget(Paragraph::new(lines), Rect { y, height: h, ..inner });
+        }
     }
 
     /// Vista previa de cómo se interpretará la captura rápida.
@@ -953,6 +1123,36 @@ impl App {
     }
 }
 
+/// Corta `s` a `w` columnas, con «…» si no cabe.
+fn truncate(s: &str, w: usize) -> String {
+    if s.width() <= w {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for c in s.chars() {
+        if out.width() + c.to_string().width() + 1 > w {
+            break;
+        }
+        out.push(c);
+    }
+    out.push('…');
+    out
+}
+
+/// « · vencida hace 9 días», « · en 3 días»…
+fn relative(d: NaiveDate, today: NaiveDate, done: bool) -> String {
+    if done {
+        return String::new();
+    }
+    match (d - today).num_days() {
+        0 => "  · hoy".into(),
+        1 => "  · mañana".into(),
+        -1 => "  · venció ayer".into(),
+        n if n < 0 => format!("  · venció hace {} días", -n),
+        n => format!("  · en {n} días"),
+    }
+}
+
 /// Fecha límite: rojo si ya pasó o es hoy, amarillo si faltan 2 días o menos.
 fn deadline_style(d: NaiveDate, today: NaiveDate) -> Style {
     match (d - today).num_days() {
@@ -974,6 +1174,7 @@ fn draw_help(f: &mut Frame) {
         ("", ""),
         ("Tareas", ""),
         ("a", "añadir (captura rápida)"),
+        ("Tab", "al escribir: completar +proyecto o #etiqueta"),
         ("e", "editar"),
         ("x  espacio", "completar / reabrir"),
         ("s", "fecha, hora y límite (mañana 18:00 limit 20/11)"),
@@ -1022,6 +1223,71 @@ mod tests {
 
     fn key(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn columnas_detalle_y_autocompletado() {
+        let mut store = temp_store("tabla");
+        let dir = store.dir().unwrap().to_path_buf();
+        let hoy = today();
+        for (txt, proj) in [
+            ("Pagar el recibo del agua de mi mamá p2", "Inbox"),
+            ("RM: dar seguimiento a la decisión del checador (Cosme y Marisela) hoy 18:00 limit hoy", "Ramírez Medellín"),
+            ("Corto hoy #casa", "Niuko Consultores"),
+        ] {
+            let mut t = quick::parse_quick(txt, hoy).into_task(proj);
+            if t.text.starts_with("Pagar") {
+                t.due = Some(hoy - chrono::Duration::days(9));
+            }
+            if t.text.starts_with("RM") {
+                t.description = "La propuesta se envió el 20-oct.\nPedir la elección antes del 30-oct.".into();
+            }
+            let p = t.project.clone();
+            let id = store.add(t, &p).unwrap();
+            if p == "Inbox" {
+                store.add_note(&id, "27 oct: aún sin pagar").unwrap();
+            }
+        }
+        let mut app = App::new(store);
+        app.set_view(View::Today);
+
+        // Ancha: detalle a la derecha y columnas alineadas.
+        let mut term = Terminal::new(TestBackend::new(150, 22)).unwrap();
+        term.draw(|f| app.draw(f)).unwrap();
+        let out = format!("{}", term.backend());
+        println!("{out}");
+        assert!(out.contains("Descripción") || out.contains("Notas (1)"), "detalle con secciones");
+        // Columna (en caracteres) donde empieza el proyecto, dentro de la fila de la lista.
+        let col = |needle: &str| {
+            out.lines()
+                .find(|l| l.contains(&format!("○ {needle}")))
+                .and_then(|l| {
+                    let chars: Vec<char> = l.chars().collect();
+                    let s: String = chars.iter().collect();
+                    ["Inbox", "Ramírez", "Niuko"].iter().find_map(|p| s.find(p)).map(|b| s[..b].width())
+                })
+        };
+        let a = col("Pagar el recibo");
+        let b = col("RM: dar");
+        assert!(a.is_some() && a == b, "la columna de proyecto está alineada: {a:?} {b:?}");
+
+        // Angosta: el texto largo se corta con «…».
+        let mut term = Terminal::new(TestBackend::new(90, 24)).unwrap();
+        term.draw(|f| app.draw(f)).unwrap();
+        let out = format!("{}", term.backend());
+        println!("{out}");
+        assert!(out.contains('…'));
+
+        // Autocompletado: «+ram» → «+Ramírez_Medellín ».
+        app.on_key(key('a'));
+        for c in "Llamar +ram".chars() {
+            app.on_key(key(c));
+        }
+        let (_, opts) = app.completions().expect("hay sugerencias");
+        assert_eq!(opts, vec!["+Ramírez_Medellín"]);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.input.text(), "Llamar +Ramírez_Medellín ");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

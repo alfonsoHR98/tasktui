@@ -169,16 +169,20 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 | `#casa` o `@casa` | etiqueta |
 | `+Trabajo` · `+Mis_Cuentas` | proyecto (`_` = espacio; si no existe, se crea) |
 | `p1` … `p4` | prioridad |
-| `hoy`, `mañana`, `pasado mañana` | fecha |
-| `lunes` … `domingo` | el próximo ese día |
-| `en 3 días`, `en 2 semanas`, `en 1 mes` | fecha relativa |
+| `hoy`, `mañana`, `pasado mañana` · `today`, `tomorrow` | fecha |
+| `lunes` … `domingo` · `monday` … `sunday` | el próximo ese día |
+| `en 3 días`, `en 2 semanas` · `in 3 days`, `in 2 weeks` | fecha relativa |
 | `15/11`, `15/11/2026`, `2026-11-15` | fecha exacta |
 | `18:00`, `9:30`, `9am`, `6:30pm` | hora (sin fecha, es para hoy) |
 | `limit 20/11`, `limit viernes`, `{20/11}`, `{en 3 días}` | fecha límite |
-| `cada día`, `cada 2 semanas`, `cada lunes`, `cada mes`, `cada año` | repetición |
+| `cada día`, `cada 2 semanas`, `cada lunes` · `every day`, `every 2 weeks`, `every monday` | repetición |
 | `\hoy` | la palabra como texto literal |
 
 ## Atajos (TUI)
+
+En la lista, cada columna va alineada: texto (con etiquetas), fecha y hora,
+`🎯` fecha límite, proyecto e íconos (`📝` tiene descripción, `💬2` tiene 2
+notas, `↻` se repite). En terminales anchas el detalle va a la derecha.
 
 | Tecla | Acción |
 |---|---|
@@ -187,6 +191,7 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 | `gi` `gt` `gu` `ga` | Inbox · Hoy · Próximos · Todas |
 | `gg` `G` | inicio / final |
 | `a` | añadir (en Hoy pone fecha de hoy; en un proyecto o etiqueta, la usa) |
+| `Tab` · `↑` `↓` | al escribir `+pro` o `#eti`: completar el proyecto o la etiqueta (busca en cualquier parte del nombre) |
 | `e` | editar con la misma sintaxis |
 | `x` / espacio | completar / reabrir |
 | `s` | fecha, hora y límite (`mañana 18:00 limit 20/11`) · `t` para hoy |

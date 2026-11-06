@@ -4,7 +4,8 @@
 //!
 //! - `#etiqueta` o `@etiqueta`, `+Proyecto` (usa `_` para espacios), `p1`..`p4`
 //! - Fechas: hoy, mañana, pasado mañana, lunes..domingo, `en 3 días`,
-//!   `15/11`, `15/11/2026`, `2026-11-15`
+//!   `15/11`, `15/11/2026`, `2026-11-15`. También en inglés: today, tomorrow,
+//!   monday..sunday, `in 3 days`, `every 2 weeks`, `every monday`.
 //! - Hora: `18:00`, `9:30`, `9am`, `6:30pm` (sin fecha, es para hoy)
 //! - Fecha límite: `limit 20/11`, `limit viernes`, `{20/11}`, `{en 3 días}`
 //! - Repetición: `cada día`, `cada 2 semanas`, `cada lunes`, `cada mes`
@@ -75,6 +76,10 @@ fn unit_es(s: &str) -> Option<Unit> {
         "semana" | "semanas" => Unit::Week,
         "mes" | "meses" => Unit::Month,
         "año" | "ano" | "años" | "anos" => Unit::Year,
+        "day" | "days" => Unit::Day,
+        "week" | "weeks" => Unit::Week,
+        "month" | "months" => Unit::Month,
+        "year" | "years" => Unit::Year,
         _ => return None,
     })
 }
@@ -155,21 +160,21 @@ fn try_special(toks: &[&str], i: usize, today: NaiveDate) -> Option<(usize, Effe
         "p1" | "p2" | "p3" | "p4" => {
             return Some((1, Effect::Priority(low[1..].parse().unwrap())));
         }
-        "hoy" => return Some((1, Effect::Due(today))),
-        "mañana" | "manana" => return Some((1, Effect::Due(today + Duration::days(1)))),
+        "hoy" | "today" => return Some((1, Effect::Due(today))),
+        "mañana" | "manana" | "tomorrow" => return Some((1, Effect::Due(today + Duration::days(1)))),
         "pasado" => {
             if matches!(next(1).as_deref(), Some("mañana" | "manana")) {
                 return Some((2, Effect::Due(today + Duration::days(2))));
             }
         }
-        "en" => {
+        "en" | "in" => {
             let n = next(1).and_then(|s| s.parse::<u32>().ok());
             let u = next(2).and_then(|s| unit_es(&s));
             if let (Some(n), Some(u)) = (n, u) {
                 return Some((3, Effect::Due(add(today, n, u))));
             }
         }
-        "cada" => {
+        "cada" | "every" => {
             if let Some(n1) = next(1) {
                 if let Ok(n) = n1.parse::<u32>() {
                     if let (true, Some(u)) = (n > 0, next(2).and_then(|s| unit_es(&s))) {
@@ -387,6 +392,20 @@ mod tests {
         assert_eq!((q.deadline, q.due), (Some(d("2026-11-19")), Some(h)));
         let q = parse_quick("Sin limit claro", h);
         assert_eq!((q.text.as_str(), q.deadline), ("Sin limit claro", None));
+    }
+
+    #[test]
+    fn fechas_en_ingles() {
+        let h = d(HOY);
+        assert_eq!(parse_quick("x today", h).due, Some(h));
+        assert_eq!(parse_quick("x tomorrow 9am", h).due, Some(d("2026-11-06")));
+        assert_eq!(parse_quick("x friday", h).due, Some(d("2026-11-06")));
+        assert_eq!(parse_quick("x in 2 weeks", h).due, Some(d("2026-11-19")));
+        assert_eq!(parse_quick("Gym every monday", h).recurrence.unwrap().to_obsidian(), "every week on Monday");
+        assert_eq!(parse_quick("x every 2 weeks", h).recurrence.unwrap().to_es(), "cada 2 semanas");
+        assert_eq!(parse_quick("x limit friday", h).deadline, Some(d("2026-11-06")));
+        // «in» suelto es texto.
+        assert_eq!(parse_quick("Log in to the server", h).text, "Log in to the server");
     }
 
     #[test]

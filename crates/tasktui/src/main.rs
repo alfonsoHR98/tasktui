@@ -150,8 +150,11 @@ fn task_plain(t: &Task, show_project: bool) -> String {
     if let Some(d) = t.deadline {
         s.push_str(&format!(" 🎯{}", dates::rel(d, today)));
     }
-    if !t.description.trim().is_empty() || !t.notes.is_empty() {
-        s.push_str(" ≡");
+    if !t.description.trim().is_empty() {
+        s.push_str(" 📝");
+    }
+    if !t.notes.is_empty() {
+        s.push_str(&format!(" 💬{}", t.notes.len()));
     }
     if t.recurrence.is_some() {
         s.push_str(" ↻");

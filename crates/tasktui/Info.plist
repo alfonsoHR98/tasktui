@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.madaradev.tasktui</string>
+	<key>CFBundleName</key>
+	<string>tasktui</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>tasktui copia tus tareas con fecha a la lista «tasktui» de Recordatorios para avisarte.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>tasktui copia tus tareas con fecha a la lista «tasktui» de Recordatorios para avisarte.</string>
+</dict>
+</plist>

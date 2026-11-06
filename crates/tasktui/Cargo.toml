@@ -1,0 +1,24 @@
+[package]
+name = "tasktui"
+description = "Gestor de tareas para la terminal (TUI + CLI) inspirado en Todoist"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tasktui-core.workspace = true
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["clock"] }
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+ratatui = "0.30.2"
+serde.workspace = true
+serde_json.workspace = true
+toml = "1.2.0"
+unicode-width = "0.2.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSCalendar", "NSError", "NSString", "NSArray"] }
+objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKCalendar", "EKCalendarItem", "EKEventStore", "EKObject", "EKReminder", "EKSource", "EKTypes"] }
+block2 = "0.6"

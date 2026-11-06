@@ -244,8 +244,9 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** núcleo `tasktui-core` separado, compila a wasm.
 - **Hecho:** servidor con API en Cloudflare Workers + D1.
 - **Hecho:** TUI/CLI en modo remoto, con caché sin conexión.
-- **En curso:** y página web instalable (PWA) para el celular y cualquier
-  navegador, con avisos push. `tasktui export` a `.md` como respaldo.
+- **Hecho:** `tasktui exportar` a `.md` como respaldo.
+- **Siguiente:** página web instalable (PWA) para el celular y cualquier
+  navegador, con avisos push.
 - **Después:** horas en las fechas (`mañana 18:00`) para avisos a una hora exacta.
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.

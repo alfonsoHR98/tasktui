@@ -30,6 +30,27 @@ tasktui            # abre la TUI
 
 ## Dónde se guardan las tareas
 
+Dos modos, con la misma TUI y la misma CLI:
+
+- **Remoto** (recomendado si quieres usarlo desde varios lugares): las tareas
+  viven en tu servidor (ver «Servidor» más abajo).
+- **Local**: una carpeta de archivos `.md`.
+
+```sh
+tasktui servidor conectar https://tasks.ejemplo.com   # pide el token; activa el modo remoto
+tasktui servidor                                      # muestra el modo y si el servidor responde
+tasktui servidor local | remoto                       # cambiar de modo
+tasktui servidor subir                                # sube los .md locales al servidor (conserva ids)
+tasktui exportar ~/Respaldo/Tareas                    # respaldo en .md desde cualquier modo
+```
+
+En modo remoto cada cambio va directo al servidor. La última lectura queda en
+caché: sin internet ves tus tareas (la TUI muestra ⚠) y los cambios se rechazan
+con un aviso en lugar de perderse. Deshacer (`u`) también funciona en remoto.
+`TASKTUI_SERVER` + `TASKTUI_TOKEN` fuerzan el modo remoto; `TASKTUI_DIR`, el local.
+
+### Modo local
+
 Por defecto en `~/.local/share/tasktui`. Para verlas en el celular, apunta a una
 carpeta dentro de tu vault de Obsidian (en iCloud):
 
@@ -195,7 +216,9 @@ servidor.
 
 | Archivo | Qué hace |
 |---|---|
-| `store.rs` | carpeta de `.md`: cargar, añadir, editar, mover, completar, deshacer, notas |
+| `store.rs` | elige el modo (local o remoto) con una sola interfaz |
+| `files.rs` | modo local: carpeta de `.md` (cargar, añadir, editar, mover, completar, deshacer, notas) y exportar |
+| `remote.rs` | modo remoto: cliente HTTP del servidor, caché sin conexión y deshacer |
 | `tui.rs` | interfaz ratatui |
 | `reminders.rs` | espejo con Recordatorios (EventKit, solo macOS) y agente de launchd |
 | `config.rs` | `~/.config/tasktui/config.toml` |
@@ -203,6 +226,7 @@ servidor.
 
 ```sh
 cargo test                                              # todas las pruebas
+TASKTUI_SERVER=http://localhost:8787 TASKTUI_TOKEN=… cargo test -p tasktui remoto   # integración con un servidor
 cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compila a wasm
 ```
 
@@ -219,8 +243,8 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** captura desde Recordatorios/Siri y sync periódico con launchd.
 - **Hecho:** núcleo `tasktui-core` separado, compila a wasm.
 - **Hecho:** servidor con API en Cloudflare Workers + D1.
-- **En curso:** TUI/CLI
-  en modo remoto y página web instalable (PWA) para el celular y cualquier
+- **Hecho:** TUI/CLI en modo remoto, con caché sin conexión.
+- **En curso:** y página web instalable (PWA) para el celular y cualquier
   navegador, con avisos push. `tasktui export` a `.md` como respaldo.
 - **Después:** horas en las fechas (`mañana 18:00`) para avisos a una hora exacta.
 - **Fase 3:** abrir la tarea en Obsidian,

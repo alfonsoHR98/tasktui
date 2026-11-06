@@ -1,7 +1,9 @@
 //! tasktui — tareas en la terminal, guardadas como Markdown compatible con Obsidian.
 
 mod config;
+mod files;
 mod reminders;
+mod remote;
 mod store;
 mod tui;
 
@@ -94,8 +96,27 @@ enum Cmd {
     Projects,
     /// Lista las etiquetas
     Labels,
-    /// Muestra la carpeta de datos, o la cambia si se da una ruta
+    /// Muestra la carpeta de datos (modo local), o la cambia si se da una ruta
     Dir { path: Option<String> },
+    /// Servidor: tasktui servidor [conectar <url> | local | remoto | subir]
+    Servidor {
+        #[command(subcommand)]
+        accion: Option<ServidorCmd>,
+    },
+    /// Escribe todas las tareas como .md (formato Obsidian Tasks) en una carpeta
+    Exportar { carpeta: String },
+}
+
+#[derive(Subcommand)]
+enum ServidorCmd {
+    /// Guarda la URL y el token (lo pide por la entrada estándar) y activa el modo remoto
+    Conectar { url: String },
+    /// Usar los .md locales (el servidor queda configurado)
+    Local,
+    /// Usar el servidor
+    Remoto,
+    /// Sube las tareas de los .md locales al servidor (conserva ids; no borra nada)
+    Subir,
 }
 
 fn task_json(t: &Task) -> Value {
@@ -135,7 +156,14 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut store = Store::open(config::data_dir()?)?;
+    if let Some(Cmd::Servidor { accion }) = &cli.cmd {
+        return servidor(accion.as_ref(), cli.json);
+    }
+
+    let mut store = Store::open()?;
+    if let Some(n) = store.notice() {
+        eprintln!("{n}");
+    }
     let json = cli.json;
     let Some(cmd) = cli.cmd else {
         return tui::run(store);
@@ -147,7 +175,12 @@ fn main() -> Result<()> {
         Cmd::Add { .. } | Cmd::Done { .. } | Cmd::Edit { .. } | Cmd::Note { .. } | Cmd::Rm { .. }
     );
     match cmd {
-        Cmd::Dir { .. } => unreachable!(),
+        Cmd::Dir { .. } | Cmd::Servidor { .. } => unreachable!(),
+        Cmd::Exportar { carpeta } => {
+            let dir = std::path::PathBuf::from(&carpeta);
+            let n = files::export(&store, &dir)?;
+            println!("Exportados {n} proyectos a {}", dir.display());
+        }
         Cmd::Sync { auto, agente, cada, quiet } => {
             if let Some(a) = agente {
                 let path = reminders::set_agent(a == "on", cada)?;
@@ -311,6 +344,64 @@ fn main() -> Result<()> {
     }
     if mutating {
         reminders::sync_in_background();
+    }
+    Ok(())
+}
+
+/// `tasktui servidor …`
+fn servidor(accion: Option<&ServidorCmd>, json: bool) -> Result<()> {
+    match accion {
+        None => {
+            let modo = match config::mode()? {
+                config::Mode::Local(d) => format!("local ({})", d.display()),
+                config::Mode::Remote(s) => format!("remoto ({})", s.url),
+            };
+            let estado = match config::server() {
+                Some(s) => match remote::Client::new(&s).get("projects") {
+                    Ok(_) => format!("{} responde y acepta el token", s.url),
+                    Err(e) => format!("{}: {e}", s.url),
+                },
+                None => "sin servidor configurado (tasktui servidor conectar <url>)".into(),
+            };
+            if json {
+                println!("{}", serde_json::json!({ "modo": modo, "servidor": estado }));
+            } else {
+                println!("Modo: {modo}\nServidor: {estado}");
+            }
+        }
+        Some(ServidorCmd::Conectar { url }) => {
+            eprint!("Token del servidor: ");
+            let mut token = String::new();
+            std::io::stdin().read_line(&mut token)?;
+            let server = config::Server { url: url.trim_end_matches('/').to_string(), token: token.trim().to_string() };
+            if server.token.is_empty() {
+                bail!("El token está vacío");
+            }
+            remote::Client::new(&server).get("projects")?;
+            config::save_server(&server)?;
+            config::set_remote(true)?;
+            println!("Conectado a {} (modo remoto). Token en {}", server.url, config::server_path().display());
+        }
+        Some(ServidorCmd::Local) => {
+            config::set_remote(false)?;
+            println!("Modo local: {}", config::data_dir()?.display());
+        }
+        Some(ServidorCmd::Remoto) => {
+            let Some(s) = config::server() else {
+                bail!("No hay servidor configurado: tasktui servidor conectar <url>");
+            };
+            config::set_remote(true)?;
+            println!("Modo remoto: {}", s.url);
+        }
+        Some(ServidorCmd::Subir) => {
+            let Some(s) = config::server() else {
+                bail!("No hay servidor configurado: tasktui servidor conectar <url>");
+            };
+            let local = files::FileStore::open(config::data_dir()?)?;
+            let tareas: Vec<TaskDto> = local.iter().map(|(_, t)| TaskDto::from(t)).collect();
+            let n = remote::Client::new(&s).import(&local.projects(), &tareas)?;
+            println!("Subidas {n} tareas de {} a {}", local.dir.display(), s.url);
+        }
     }
     Ok(())
 }

@@ -12,6 +12,7 @@
 //! | GET | `/api/tasks/:id` | una tarea |
 //! | POST | `/api/tasks` `{texto, proyecto?}` | añadir con captura rápida |
 //! | PATCH | `/api/tasks/:id` `{texto?, completo?, sin_fecha?}` | editar con captura rápida |
+//! | PUT | `/api/tasks/:id` `TaskDto` | crear o reemplazar la tarea completa (lo usa la TUI) |
 //! | POST | `/api/tasks/:id/done` | completar / reabrir |
 //! | POST | `/api/tasks/:id/notes` `{texto}` | añadir nota |
 //! | DELETE | `/api/tasks/:id` | eliminar |
@@ -208,6 +209,27 @@ async fn edit(mut req: Request, env: &Env, id: &str) -> ApiResult {
     json_ok(&TaskDto::from(&t))
 }
 
+/// Crea o reemplaza la tarea completa con el id de la ruta.
+async fn put(mut req: Request, env: &Env, id: &str) -> ApiResult {
+    let dto: TaskDto = req.json().await.map_err(|_| bad("Se esperaba una tarea en JSON"))?;
+    let mut t = Task::from(&dto);
+    if t.text.trim().is_empty() {
+        return Err(bad("La tarea necesita texto"));
+    }
+    if id.is_empty() || id.len() > 32 || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(bad("Id inválido"));
+    }
+    t.id = Some(id.to_string());
+    if t.project.trim().is_empty() {
+        t.project = INBOX.into();
+    }
+    let db = db(env)?;
+    t.project = db.canonical_project(&t.project).await?;
+    db.add_project(&t.project).await?;
+    db.save(&t).await?;
+    json_ok(&TaskDto::from(&t))
+}
+
 async fn toggle(req: &Request, env: &Env, id: &str) -> ApiResult {
     let today = today(&req.url()?, env);
     let db = db(env)?;
@@ -352,6 +374,10 @@ async fn route(req: Request, env: Env) -> ApiResult {
         (Method::Patch, ["tasks", id]) => {
             let id = id.to_string();
             edit(req, &env, &id).await
+        }
+        (Method::Put, ["tasks", id]) => {
+            let id = id.to_string();
+            put(req, &env, &id).await
         }
         (Method::Delete, ["tasks", id]) => {
             if db(&env)?.delete(id).await? {

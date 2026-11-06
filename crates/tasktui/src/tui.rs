@@ -177,6 +177,7 @@ impl App {
             quit: false,
         };
         app.refresh();
+        app.msg = app.store.notice().unwrap_or_default();
         app
     }
 
@@ -630,7 +631,15 @@ impl App {
         } else {
             Style::new().fg(ACCENT)
         };
-        let list = List::new(items).block(self.block(" tasktui ".into(), focused)).highlight_style(hl);
+        let list = List::new(items).block(self.block(
+            // ☁ = conectado al servidor; ⚠ = sin conexión (solo lectura).
+            match (self.store.dir(), self.store.notice()) {
+                (Some(_), _) => " tasktui ".into(),
+                (None, None) => " tasktui ☁ ".into(),
+                (None, Some(_)) => " tasktui ⚠ ".into(),
+            },
+            focused,
+        )).highlight_style(hl);
         let mut st = ListState::default().with_selected(Some(self.side_idx));
         f.render_stateful_widget(list, area, &mut st);
     }
@@ -910,7 +919,7 @@ mod tests {
     #[test]
     fn dibuja_y_añade() {
         let store = temp_store("tui");
-        let dir = store.dir.clone();
+        let dir = store.dir().unwrap().to_path_buf();
         let mut app = App::new(store);
         app.on_key(key('a'));
         for c in "Comprar café mañana p1 #super +Casa".chars() {

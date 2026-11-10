@@ -326,3 +326,19 @@ open TaskTUI.xcodeproj        # elige tu iPhone o un simulador y ejecuta
 
 Al abrir pide la URL del servidor y el token (se guarda en el Llavero). Con un
 Apple ID gratuito, la app instalada con Xcode caduca a los 7 días.
+
+## Servidor MCP (para Claude y otras IAs)
+
+El Worker expone `POST /mcp/<MCP_SECRET>` (MCP por HTTP, solo JSON) con las
+herramientas `list_tasks`, `get_task`, `add_task`, `update_task`,
+`complete_task`, `add_note`, `delete_task`, `list_projects`, `create_project` y
+`list_labels`. El secreto va en la URL porque los conectores de claude.ai no
+mandan cabeceras; trátalo como una contraseña.
+
+```sh
+npx wrangler secret put MCP_SECRET     # un valor largo y aleatorio (openssl rand -hex 32)
+npx wrangler deploy
+# claude.ai → Ajustes → Conectores → Añadir personalizado:
+#   https://tasks.madara.dev/mcp/<MCP_SECRET>
+# Claude Code: claude mcp add --transport http tasktui https://tasks.madara.dev/mcp/<MCP_SECRET>
+```

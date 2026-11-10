@@ -6,12 +6,26 @@ Responde siempre en español (código, comentarios y textos de la interfaz).
 Cliente nativo (iOS 17+, SwiftUI, sin dependencias) de un servidor propio de tareas
 en `https://tasks.madara.dev` (Cloudflare Worker + D1). Reemplaza a Todoist.
 El proyecto se genera con `xcodegen` desde `project.yml`; **añade archivos en `TaskTUI/`**
-y ejecuta `xcodegen` (no edites el `.xcodeproj`, está en .gitignore).
+(o en `TaskTUIWidget/` para el widget) y ejecuta `xcodegen` (no edites el `.xcodeproj`, está en .gitignore).
+`Support/` tiene los Info.plist y entitlements que genera xcodegen desde `project.yml`.
 
 ## Archivos
 - `API.swift`: cliente HTTP (Bearer token en Llavero) · `Models.swift`: `TaskItem`, `TaskGroup`, `ProjectInfo`, `Fmt` (fechas)
-- `Store.swift`: sesión y proyectos · `Notifications.swift`: avisos locales
-- `RootView` (4 pestañas: Hoy, Próximos, Inbox, Proyectos) · `TaskListView` (lista + barra de captura + búsqueda) · `TaskDetailView` (editar)
+- `Store.swift`: sesión, proyectos, etiquetas, contadores y colores de listas (en `UserDefaults`; el servidor no guarda colores)
+- `Theme.swift`: `ListTint`, `ListStyle` (color + SF Symbol), `SmartList` (Hoy, Próximos, Inbox, Todas), `Route`, `Priority`
+- `Notifications.swift`: avisos locales
+
+## Widget (`TaskTUIWidget/`)
+- Widget «Hoy» (pequeño, mediano, grande y pantalla de bloqueo). Comparte con la app
+  `API.swift`, `Models.swift` y `Theme.swift` (ver `project.yml`).
+- Sesión compartida por el App Group `group.dev.madaradev.tasktui`: token en el Llavero
+  con ese grupo y URL/colores en `Shared.defaults` (`API.swift`, enum `Shared`).
+- El círculo usa `CompleteTaskIntent` (App Intent) para completar sin abrir la app.
+- Enlaces: `tasktui://hoy` y `tasktui://tarea/<id>` (los maneja `RootView.open`).
+- La app recarga el widget en `Store.syncReminders()`, que se llama tras cada cambio.
+- `RootView` (inicio con tarjetas + «Mis listas», `ListSheet` para crear lista o cambiar color/ícono)
+- `TaskListView` (encabezado de color con contador, filas, deslizar, «Mostrar completadas», captura rápida + búsqueda)
+- `TaskEditorView` (hoja de crear y editar con chips; crear arma el texto de captura rápida con el título escapado con `\`, editar usa `PUT`)
 
 ## Modelo de datos (tabla `tasks` en D1; JSON `TaskItem`)
 | Campo | Tipo | Notas |

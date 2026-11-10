@@ -7,6 +7,7 @@
 //!
 //! | Método | Ruta | Qué hace |
 //! |---|---|---|
+//! | POST | `/mcp/<MCP_SECRET>` | servidor MCP (ver `mcp.rs`) |
 //! | GET | `/api/health` | estado (sin token) |
 //! | GET | `/api/tasks?view=today&all=1&q=texto&today=AAAA-MM-DD` | vista agrupada |
 //! | GET | `/api/tasks/:id` | una tarea |
@@ -25,6 +26,7 @@
 //! (`vista`, `texto`…) se siguen aceptando como alias.
 
 mod db;
+mod mcp;
 
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -386,6 +388,16 @@ async fn import(mut req: Request, env: &Env) -> ApiResult {
 async fn route(req: Request, env: Env) -> ApiResult {
     let path = req.path();
     let method = req.method();
+    if let Some(secret) = path.strip_prefix("/mcp/") {
+        let ok = env.secret("MCP_SECRET").map(|s| same_secret(secret.trim_end_matches('/'), &s.to_string())).unwrap_or(false);
+        if !ok {
+            return Err(ApiError(404, "No encontrado".into()));
+        }
+        if method != Method::Post {
+            return Err(ApiError(405, "Usa POST".into()));
+        }
+        return Ok(mcp::serve(req, &env).await?);
+    }
     if path == "/api/health" {
         return json_ok(&json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") }));
     }
@@ -395,6 +407,13 @@ async fn route(req: Request, env: Env) -> ApiResult {
     if !authorized(&req, &env) {
         return Err(ApiError(401, "Falta el token o no es válido".into()));
     }
+    route_inner(req, env).await
+}
+
+/// Las rutas de la API sin comprobar el token (ya validado, o llamada interna del MCP).
+async fn route_inner(req: Request, env: Env) -> ApiResult {
+    let path = req.path();
+    let method = req.method();
     let parts: Vec<&str> = path.trim_start_matches("/api/").trim_end_matches('/').split('/').collect();
     match (method, parts.as_slice()) {
         (Method::Get, ["tasks"]) => list(&req, &env).await,

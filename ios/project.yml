@@ -9,6 +9,9 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    # Equipo de firma: si no está aquí, xcodegen lo borra al regenerar.
+    DEVELOPMENT_TEAM: WLR5G5W9T2
+    CODE_SIGN_STYLE: Automatic
 targets:
   TaskTUI:
     type: application
@@ -22,3 +25,40 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    # Enlaces desde el widget: tasktui://hoy y tasktui://tarea/<id>
+    info:
+      path: Support/TaskTUI-Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.madaradev.tasktui
+            CFBundleURLSchemes: [tasktui]
+    # El App Group comparte el token (Llavero) y la URL del servidor con el widget.
+    entitlements:
+      path: Support/TaskTUI.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.madaradev.tasktui]
+    dependencies:
+      - target: TaskTUIWidget
+  TaskTUIWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - TaskTUIWidget
+      # Código compartido con la app.
+      - TaskTUI/API.swift
+      - TaskTUI/Models.swift
+      - TaskTUI/Theme.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.madaradev.tasktui.widget
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: tasktui
+    info:
+      path: Support/TaskTUIWidget-Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Support/TaskTUIWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.madaradev.tasktui]

@@ -311,3 +311,18 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
   temas de color.
 - **Fase 4:** notificaciones en macOS/iPhone (puente opcional con Recordatorios
   vía EventKit), servidor MCP, publicación (`brew`, crates.io).
+
+## App de iPhone (SwiftUI)
+
+`ios/` contiene una app nativa que usa la misma API del servidor: vistas Hoy,
+Próximos, Inbox y Proyectos, búsqueda, captura rápida, completar, editar con
+descripción y notas, y avisos locales según fecha/hora (sin hora: 9:00).
+
+```sh
+brew install xcodegen
+cd ios && xcodegen            # genera TaskTUI.xcodeproj
+open TaskTUI.xcodeproj        # elige tu iPhone o un simulador y ejecuta
+```
+
+Al abrir pide la URL del servidor y el token (se guarda en el Llavero). Con un
+Apple ID gratuito, la app instalada con Xcode caduca a los 7 días.

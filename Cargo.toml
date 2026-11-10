@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/tasktui-core", "crates/tasktui", "crates/tasktui-worker"]
+members = ["crates/tasktui-core", "crates/tasktui", "crates/tasktui-worker", "crates/tasktui-server"]
 # El Worker solo compila a wasm: `cargo build`/`cargo test` no lo incluyen.
 default-members = ["crates/tasktui-core", "crates/tasktui"]
 

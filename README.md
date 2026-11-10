@@ -1,10 +1,11 @@
 # tasktui
 
-Gestor de tareas para la terminal, inspirado en Todoist: proyectos, secciones,
-etiquetas, prioridades, fechas en lenguaje natural, repeticiones y atajos de
-teclado estilo vim. Las tareas se guardan como **Markdown compatible con el
-plugin Obsidian Tasks**, así que se sincronizan por iCloud y se ven/editan desde
-Obsidian en el iPhone.
+Gestor de tareas personal para reemplazar a Todoist, **tuyo y en tu propio
+servidor**: una TUI/CLI de terminal (Rust + Ratatui), una página web instalable
+(PWA), una app nativa de iPhone, y un servidor MCP para que Claude y otras IAs
+manejen tus tareas. Captura rápida en lenguaje natural (`Pagar luz mañana
+18:00 p1 +Finanzas #casa cada mes`), proyectos, etiquetas, prioridades,
+repeticiones, fecha límite, descripción y notas.
 
 ```
 ┌ tasktui ─────────────┐┌ Hoy · 3 ─────────────────────────────────────┐
@@ -21,272 +22,84 @@ Obsidian en el iPhone.
  a añadir · x completar · e editar · s fecha · d borrar · / buscar · ? ayuda
 ```
 
-## Instalación
+## Cómo funciona
+
+```
+ TUI / CLI ─┐
+ Web (PWA) ─┼──  HTTPS + token  ──►  Servidor (API + web + MCP)  ──►  Base de datos
+ iPhone    ─┤                         · Cloudflare Worker + D1
+ Claude    ─┘  (MCP)                  · o contenedor Docker + SQLite
+```
+
+Un servidor es la fuente de verdad y todos los clientes hablan la misma API.
+Toda la lógica (captura rápida, vistas, repeticiones) vive en `tasktui-core` y
+es la misma en la TUI y en el servidor. También puedes usarlo **sin servidor**,
+guardando las tareas como Markdown compatible con Obsidian Tasks.
+
+## Empieza
+
+Elige dónde vivirá tu servidor:
+
+| Opción | Ideal si… | Guía |
+|---|---|---|
+| **Docker + SQLite** | tienes un VPS, Raspberry Pi, NAS o tu Mac siempre encendida | [docs/docker.md](docs/docker.md) |
+| **Cloudflare Workers + D1** | quieres algo gratis, sin mantenimiento y siempre disponible | [docs/cloudflare.md](docs/cloudflare.md) |
+| **Sin servidor** (archivos `.md`) | solo usas la terminal, sincronizas con iCloud/Obsidian | [docs/modos-y-recordatorios.md](docs/modos-y-recordatorios.md) |
+
+### Docker en tres comandos
+
+```sh
+git clone https://github.com/alfonsoHR98/tasktui.git && cd tasktui
+cp .env.example .env        # pon un API_TOKEN (openssl rand -hex 24)
+docker compose up -d --build
+```
+
+Abre `http://127.0.0.1:8787`, entra con tu token y listo. Para usarlo fuera de
+casa necesitas HTTPS (la guía explica Caddy, Cloudflare Tunnel y Tailscale).
+
+### Instala la TUI/CLI
+
+Requiere [Rust](https://rustup.rs).
 
 ```sh
 cargo install --path crates/tasktui
-tasktui            # abre la TUI
+tasktui server connect https://tareas.tu-dominio.com    # pide el token
+tasktui                                                  # abre la TUI
+tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 ```
 
-## Dónde se guardan las tareas
+## Qué incluye
 
-Dos modos, con la misma TUI y la misma CLI:
+- **TUI y CLI** (`tasktui`): atajos estilo vim, deshacer, `--json` en cada comando. → [uso](docs/uso.md)
+- **Servidor** con API JSON: Cloudflare o Docker, con la misma API. → [API](docs/api.md)
+- **Página web (PWA)**, servida por el mismo servidor, funciona sin conexión en lectura. → [web](docs/web.md)
+- **App de iPhone** (SwiftUI) con widget y avisos locales. → [iOS](docs/ios.md)
+- **Servidor MCP** para Claude y otras IAs. → [MCP](docs/mcp.md)
+- **Recordatorios de Apple** (macOS): espejo en una lista, captura con Siri. → [docs](docs/modos-y-recordatorios.md)
+- **Respaldo**: `tasktui export` a `.md`, y `/api/export` en JSON.
 
-- **Remoto** (recomendado si quieres usarlo desde varios lugares): las tareas
-  viven en tu servidor (ver «Servidor» más abajo).
-- **Local**: una carpeta de archivos `.md`.
+## Documentación
 
-```sh
-tasktui server connect https://tasks.ejemplo.com   # pide el token; activa el modo remoto
-tasktui server                                     # muestra el modo y si el servidor responde
-tasktui server local | remote                      # cambiar de modo
-tasktui server push                                # sube los .md locales al servidor (conserva ids)
-tasktui export ~/Respaldo/Tareas                   # respaldo en .md desde cualquier modo
-```
-
-En modo remoto cada cambio va directo al servidor. La última lectura queda en
-caché: sin internet ves tus tareas (la TUI muestra ⚠) y los cambios se rechazan
-con un aviso en lugar de perderse. Deshacer (`u`) también funciona en remoto.
-`TASKTUI_SERVER` + `TASKTUI_TOKEN` fuerzan el modo remoto; `TASKTUI_DIR`, el local.
-
-### Modo local
-
-Por defecto en `~/.local/share/tasktui`. Para verlas en el celular, apunta a una
-carpeta dentro de tu vault de Obsidian (en iCloud):
-
-```sh
-tasktui dir "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/<TuVault>/Tareas"
-```
-
-Eso se guarda en `~/.config/tasktui/config.toml`. La variable `TASKTUI_DIR`
-tiene prioridad (útil para pruebas).
-
-### Formato
-
-| Concepto | En disco |
+| | |
 |---|---|
-| Proyecto | un archivo `.md` (`Trabajo/Cliente.md` → proyecto `Trabajo/Cliente`) |
-| Sección | encabezado `##` dentro del archivo |
-| Tarea | `- [ ] Pagar luz #casa 🔺 🔁 every month 📅 2026-11-05 ⏰ 18:00 🎯 2026-11-20 🆔 frlyy` |
-| Hora · fecha límite | `⏰ 18:00` · `🎯 2026-11-20` (propios de tasktui; Obsidian Tasks los deja como texto) |
-| Etiqueta | `#etiqueta` (las de Obsidian) |
-| Prioridad | 🔺 p1 · ⏫ p2 · 🔼 p3 |
-| Subtarea | tarea con sangría |
-| Descripción | texto con sangría bajo la tarea (`    Recibo de CFE`) |
-| Nota | viñeta con sangría bajo la tarea (`    - 2026-11-06: llamé, sigue pendiente`) |
+| [docs/docker.md](docs/docker.md) | servidor autoalojado, HTTPS, respaldos, variables |
+| [docs/cloudflare.md](docs/cloudflare.md) | servidor en Cloudflare Workers + D1 |
+| [docs/mcp.md](docs/mcp.md) | conectar Claude u otra IA |
+| [docs/uso.md](docs/uso.md) | captura rápida, atajos de la TUI, CLI |
+| [docs/api.md](docs/api.md) | rutas de la API |
+| [docs/web.md](docs/web.md) | la página web / PWA |
+| [docs/ios.md](docs/ios.md) | la app de iPhone |
+| [docs/modos-y-recordatorios.md](docs/modos-y-recordatorios.md) | modo local, formato Markdown, Recordatorios |
+| [docs/desarrollo.md](docs/desarrollo.md) | estructura del código y pruebas |
 
-La descripción y las notas se mueven y se borran junto con su tarea.
+## Seguridad
 
-- Lo que no es tarea (notas, texto libre) se respeta tal cual.
-- Las tareas que no tocas no se reformatean.
-- Cada tarea pendiente recibe un `🆔` corto y estable para que la CLI pueda
-  referirse a ella (también las que escribas desde Obsidian).
-- Al completar una tarea que se repite, la pendiente avanza de fecha y conserva
-  su id; la ocurrencia hecha queda debajo con `✅ fecha` (igual que Obsidian Tasks).
-
-## Recordatorios de Apple (avisos en Mac e iPhone)
-
-```sh
-tasktui sync              # sincroniza una vez
-tasktui sync --auto on    # además, sincroniza en segundo plano tras cada cambio
-tasktui sync --agente on  # y cada 10 min con launchd (--cada N para cambiarlo)
-```
-
-- Crea la lista **tasktui** en Recordatorios con un recordatorio por cada tarea
-  pendiente **con fecha** (título, fecha de todo el día, prioridad, proyecto y
-  notas). Te avisa a la hora de «Notificación de hoy» de Recordatorios.
-- Los `.md` mandan: si cambias un recordatorio de tasktui, el siguiente `sync`
-  lo deja como la tarea. Dos excepciones:
-  - si lo **completas** en Recordatorios, la tarea se completa (si se repite, avanza);
-  - si **creas** un recordatorio en la lista tasktui (a mano o con Siri), se
-    importa como tarea. El título acepta la captura rápida
-    (`Comprar leche +Casa #super p1`); la fecha, prioridad y notas del
-    recordatorio se respetan. Si no tiene fecha, pasa a tasktui y sale de
-    Recordatorios (ahí solo viven las tareas con fecha).
-- La primera vez macOS pide permiso de acceso a Recordatorios (el agente de
-  launchd tiene su propio permiso; el registro queda en
-  `~/Library/Logs/tasktui-sync.log`).
-- La relación tarea ↔ recordatorio vive en `~/.config/tasktui/recordatorios.json`.
-
-## Servidor (Cloudflare Workers + D1)
-
-`crates/tasktui-worker` publica una API JSON con la misma lógica que la TUI
-(captura rápida, vistas, completar con repeticiones). Corre en el plan gratuito
-de Cloudflare y está siempre disponible.
-
-```sh
-cargo install worker-build --version 0.8.7 --locked
-cd crates/tasktui-worker
-npx wrangler d1 create tasktui                 # copia el database_id a wrangler.jsonc
-npx wrangler d1 migrations apply tasktui --remote
-npx wrangler secret put API_TOKEN              # un token largo y aleatorio
-npx wrangler deploy                            # cambia `routes` por tu dominio
-```
-
-Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
-
-| Método | Ruta | Qué hace |
-|---|---|---|
-| GET | `/api/tasks?view=today&all=1&q=texto&today=AAAA-MM-DD` | vista agrupada (`today`, `inbox`, `upcoming`, `all`, `+Proyecto`, `#etiqueta`) |
-| GET | `/api/tasks/:id` | una tarea |
-| POST | `/api/tasks` `{"text": "Pagar luz mañana 18:00 p1 +Finanzas limit 20/11", "description": "…"}` | añadir con captura rápida |
-| PATCH | `/api/tasks/:id` `{"text": "viernes p2"}` | cambia solo lo escrito (`"full": true` reemplaza todo; `"no_date"`, `"no_deadline"`, `"description"`) |
-| PUT | `/api/tasks/:id` (tarea completa en JSON) | crear o reemplazar (lo usa la TUI) |
-| POST | `/api/tasks/:id/done` | completar / reabrir |
-| POST | `/api/tasks/:id/notes` `{"text": "…"}` | añadir nota con la fecha de hoy |
-| DELETE | `/api/tasks/:id` | eliminar |
-| GET / POST | `/api/projects` | listar / crear `{"name": "…"}` |
-| GET | `/api/labels` | etiquetas con pendientes |
-| GET | `/api/export` · POST `/api/import` | respaldo y carga (conserva ids) |
-
-«Hoy» usa `TZ_OFFSET_MINUTES` (en `wrangler.jsonc`) si el cliente no manda `?today=`.
-Los nombres anteriores en español (`vista`, `texto`…) se aceptan como alias.
-Para aplicar migraciones nuevas: `CI=true npx wrangler d1 migrations apply tasktui --remote`
-**antes** de `wrangler deploy` (sin `CI=true`, wrangler pide confirmación y en
-una sesión no interactiva la cancela sin avisar).
-Prueba local: `npx wrangler d1 migrations apply tasktui --local`, crea
-`.dev.vars` con `API_TOKEN=...` y `npx wrangler dev`.
-
-## Página web (celular y cualquier navegador)
-
-El mismo Worker sirve una página en la raíz del dominio (por ejemplo
-`https://tasks.madara.dev`). La primera vez pide el token del servidor y lo
-guarda solo en ese navegador; «Cerrar sesión» en el menú `⋯` lo borra.
-
-- Vistas Hoy, Próximos, Inbox y Proyectos (con etiquetas), y búsqueda.
-- Captura rápida con la misma sintaxis que la TUI. Al escribir `+` o `#`
-  sugiere proyectos y etiquetas (toca la sugerencia o pulsa Tab). Dentro de un
-  proyecto, las tareas nuevas van a ese proyecto.
-- Toca el círculo para completar (con «Deshacer», también en las recurrentes).
-  Toca la tarea para ver el detalle: cambiar fecha con botones o con captura
-  rápida, editar la descripción, añadir notas con fecha y eliminar.
-- Sin conexión muestra la última copia de cada vista (solo lectura).
-- **iPhone:** ábrela en Safari → Compartir → «Agregar a pantalla de inicio».
-  Se abre como app, sin barra del navegador.
-
-No tiene paso de compilación: son archivos estáticos en
-`crates/tasktui-worker/web/` (HTML, CSS y JavaScript sin dependencias) que se
-publican con `wrangler deploy` (`assets` en `wrangler.jsonc`; `/api/*` pasa
-primero por el Worker). Las cabeceras de seguridad (CSP) están en `web/_headers`.
-
-## Una tarea
-
-| Campo | Para qué |
-|---|---|
-| Fecha (+ hora opcional) | cuándo piensas hacerla; con hora, Recordatorios avisa a esa hora |
-| Fecha límite | cuándo **debe** estar hecha; aparece en «Hoy» cuando llega y en rojo si pasó |
-| Descripción | texto libre de varias líneas (contexto, enlaces) |
-| Notas | comentarios de seguimiento, cada uno con su fecha |
-| Prioridad, etiquetas, proyecto, sección, repetición | como en Todoist |
-
-## Captura rápida
-
-```
-Entregar reporte viernes 18:00 p1 #trabajo +Cliente limit 20/11
-Pagar luz mañana p1 #casa +Finanzas cada mes
-```
-
-| Escribe | Significa |
-|---|---|
-| `#casa` o `@casa` | etiqueta |
-| `+Trabajo` · `+Mis_Cuentas` | proyecto (`_` = espacio; si no existe, se crea) |
-| `p1` … `p4` | prioridad |
-| `hoy`, `mañana`, `pasado mañana` · `today`, `tomorrow` | fecha |
-| `lunes` … `domingo` · `monday` … `sunday` | el próximo ese día |
-| `en 3 días`, `en 2 semanas` · `in 3 days`, `in 2 weeks` | fecha relativa |
-| `15/11`, `15/11/2026`, `2026-11-15` | fecha exacta |
-| `18:00`, `9:30`, `9am`, `6:30pm` | hora (sin fecha, es para hoy) |
-| `limit 20/11`, `limit viernes`, `{20/11}`, `{en 3 días}` | fecha límite |
-| `cada día`, `cada 2 semanas`, `cada lunes` · `every day`, `every 2 weeks`, `every monday` | repetición |
-| `\hoy` | la palabra como texto literal |
-
-## Atajos (TUI)
-
-En la lista, cada columna va alineada: texto (con etiquetas), fecha y hora,
-`🎯` fecha límite, proyecto e íconos (`📝` tiene descripción, `💬2` tiene 2
-notas, `↻` se repite). En terminales anchas el detalle va a la derecha.
-
-| Tecla | Acción |
-|---|---|
-| `j` `k` / flechas | moverse |
-| `h` `l` / `Tab` | barra lateral ↔ lista |
-| `gi` `gt` `gu` `ga` | Inbox · Hoy · Próximos · Todas |
-| `gg` `G` | inicio / final |
-| `a` | añadir (en Hoy pone fecha de hoy; en un proyecto o etiqueta, la usa) |
-| `Tab` · `↑` `↓` | al escribir `+pro` o `#eti`: completar el proyecto o la etiqueta (busca en cualquier parte del nombre) |
-| `e` | editar con la misma sintaxis |
-| `x` / espacio | completar / reabrir |
-| `s` | fecha, hora y límite (`mañana 18:00 limit 20/11`) · `t` para hoy |
-| `i` | editar la descripción en `$EDITOR` |
-| `n` | añadir una nota (con la fecha de hoy) |
-| `1`–`4` | prioridad |
-| `d` | eliminar (pide confirmación) |
-| `u` | deshacer (hasta 50 pasos) |
-| `/` · `Esc` | buscar · limpiar |
-| `H` | mostrar completadas |
-| `r` | recargar (también se recarga solo cada 30 s sin actividad) |
-| `?` · `q` | ayuda · salir |
-
-## CLI (scripts y Claude)
-
-```sh
-tasktui add Pagar luz mañana 18:00 p1 '#casa' limit 20/11 -d "Recibo de CFE"
-tasktui list                               # hoy + vencidas (y límites que llegaron)
-tasktui list upcoming | inbox | all | +Trabajo | '#casa'
-tasktui list +Trabajo --all --search PR    # incluir completadas, filtrar texto
-tasktui show frlyy                         # la tarea con su descripción y notas
-tasktui done frlyy                         # completar / reabrir
-tasktui edit frlyy viernes 9am p2          # cambia solo lo indicado
-tasktui edit frlyy '{25/11}'               # cambia la fecha límite
-tasktui edit frlyy --no-date | --no-deadline
-tasktui describe frlyy Texto nuevo         # sin texto abre $EDITOR
-tasktui note frlyy Llamaron, sigue pendiente
-tasktui rm frlyy
-tasktui projects | labels
-tasktui sync                               # espejo con Recordatorios
-tasktui list --json                        # cualquier comando acepta --json
-```
-
-Los comandos están en inglés; los nombres anteriores en español (`servidor`,
-`exportar`, `--sin-fecha`, `--buscar`…) siguen funcionando como alias.
-
-## Código
-
-Workspace de Cargo con tres crates (el Worker solo compila a wasm y `cargo test` no lo incluye):
-
-**`crates/tasktui-core`**: el núcleo. No usa reloj, archivos ni red (quien
-llama pasa la fecha de hoy), así que compila igual a nativo que a wasm para el
-servidor.
-
-| Archivo | Qué hace |
-|---|---|
-| `model.rs` | `Task`, `Recurrence` |
-| `quick.rs` | captura rápida en español |
-| `dates.rs` | fechas en español («hoy», «vie», «15 nov») |
-| `markdown.rs` | leer/escribir una línea en formato Obsidian Tasks |
-| `views.rs` | vistas Inbox/Hoy/Próximos/Todas/Proyecto/Etiqueta |
-| `dto.rs` | la tarea en JSON: contrato de `--json` y de la API |
-
-**`crates/tasktui-worker`**: el servidor (API sobre Cloudflare Workers + D1, ver arriba)
-y la página web en `web/` (`app.js` cliente de la API, `sw.js` para abrir sin conexión).
-
-**`crates/tasktui`**: la TUI y la CLI.
-
-| Archivo | Qué hace |
-|---|---|
-| `store.rs` | elige el modo (local o remoto) con una sola interfaz |
-| `files.rs` | modo local: carpeta de `.md` (cargar, añadir, editar, mover, completar, deshacer, notas) y exportar |
-| `remote.rs` | modo remoto: cliente HTTP del servidor, caché sin conexión y deshacer |
-| `tui.rs` | interfaz ratatui |
-| `reminders.rs` | espejo con Recordatorios (EventKit, solo macOS) y agente de launchd |
-| `config.rs` | `~/.config/tasktui/config.toml` |
-| `main.rs` | CLI (clap) |
-
-```sh
-cargo test                                              # todas las pruebas
-TASKTUI_SERVER=http://localhost:8787 TASKTUI_TOKEN=… cargo test -p tasktui remoto   # integración con un servidor
-cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compila a wasm
-```
+- El token es la única llave: genera uno largo y no lo subas a ningún repo
+  (`.env` y `wrangler.jsonc` están en `.gitignore`).
+- Usa siempre HTTPS fuera de tu red. El secreto del MCP va en la URL; trátalo
+  como una contraseña.
+- Es una herramienta **personal** (un usuario, un token), no un servicio
+  multiusuario.
 
 ## Hoja de ruta
 
@@ -305,40 +118,13 @@ cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compi
 - **Hecho:** `tasktui export` a `.md` como respaldo.
 - **Hecho:** descripción, notas con fecha, hora y fecha límite; CLI y API en inglés.
 - **Hecho:** página web instalable (PWA) para el celular y cualquier navegador.
-- **Siguiente:** avisos push en la página web; preparar el repo público
-  (LICENSE, guía para montar tu propia instancia).
+- **Hecho:** repo público con guías, servidor Docker + SQLite y servidor MCP.
+- **Siguiente:** avisos push en la página web; imagen de Docker publicada; otras bases (Postgres).
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.
 - **Fase 4:** notificaciones en macOS/iPhone (puente opcional con Recordatorios
-  vía EventKit), servidor MCP, publicación (`brew`, crates.io).
+  vía EventKit), publicación (`brew`, crates.io).
 
-## App de iPhone (SwiftUI)
+## Licencia
 
-`ios/` contiene una app nativa que usa la misma API del servidor: vistas Hoy,
-Próximos, Inbox y Proyectos, búsqueda, captura rápida, completar, editar con
-descripción y notas, y avisos locales según fecha/hora (sin hora: 9:00).
-
-```sh
-brew install xcodegen
-cd ios && xcodegen            # genera TaskTUI.xcodeproj
-open TaskTUI.xcodeproj        # elige tu iPhone o un simulador y ejecuta
-```
-
-Al abrir pide la URL del servidor y el token (se guarda en el Llavero). Con un
-Apple ID gratuito, la app instalada con Xcode caduca a los 7 días.
-
-## Servidor MCP (para Claude y otras IAs)
-
-El Worker expone `POST /mcp/<MCP_SECRET>` (MCP por HTTP, solo JSON) con las
-herramientas `list_tasks`, `get_task`, `add_task`, `update_task`,
-`complete_task`, `add_note`, `delete_task`, `list_projects`, `create_project` y
-`list_labels`. El secreto va en la URL porque los conectores de claude.ai no
-mandan cabeceras; trátalo como una contraseña.
-
-```sh
-npx wrangler secret put MCP_SECRET     # un valor largo y aleatorio (openssl rand -hex 32)
-npx wrangler deploy
-# claude.ai → Ajustes → Conectores → Añadir personalizado:
-#   https://tasks.madara.dev/mcp/<MCP_SECRET>
-# Claude Code: claude mcp add --transport http tasktui https://tasks.madara.dev/mcp/<MCP_SECRET>
-```
+[MIT](LICENSE)

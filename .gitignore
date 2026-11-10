@@ -8,3 +8,5 @@ node_modules/
 ios/*.xcodeproj
 ios/build/
 xcuserdata/
+.env
+crates/tasktui-worker/wrangler.jsonc

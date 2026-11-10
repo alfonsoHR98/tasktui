@@ -1,0 +1,7 @@
+target/
+.git/
+ios/
+**/node_modules/
+**/.wrangler/
+**/build/
+.env

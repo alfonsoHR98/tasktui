@@ -1,7 +1,9 @@
 // Servidor de tasktui en Cloudflare Workers + D1.
-// Para tu propia instancia: crea la base (`npx wrangler d1 create tasktui`),
-// pon su `database_id` abajo, cambia `routes` por tu dominio y define el token:
-//   npx wrangler secret put API_TOKEN
+// Para tu propia instancia (guía completa en docs/cloudflare.md):
+//   1. cp wrangler.example.jsonc wrangler.jsonc   (wrangler.jsonc no se sube al repo)
+//   2. npx wrangler d1 create tasktui   → pega abajo el `database_id` que imprime
+//   3. cambia `routes` por tu dominio (o bórralo y pon "workers_dev": true)
+//   4. npx wrangler secret put API_TOKEN
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "tasktui",
@@ -19,7 +21,7 @@
     {
       "binding": "DB",
       "database_name": "tasktui",
-      "database_id": "9db65d7b-c33d-4638-aaed-aa38192ed6f8",
+      "database_id": "PEGA-AQUI-EL-ID-DE-TU-BASE",
       "migrations_dir": "migrations"
     }
   ],
@@ -28,7 +30,7 @@
     "TZ_OFFSET_MINUTES": "-360"
   },
   "routes": [
-    { "pattern": "tasks.madara.dev", "custom_domain": true }
+    { "pattern": "tareas.tu-dominio.com", "custom_domain": true }
   ],
   "workers_dev": false,
   "observability": {

@@ -1,0 +1,19 @@
+# Servidor de tasktui autoalojado.
+#   cp .env.example .env     # y edita API_TOKEN (y MCP_SECRET si quieres MCP)
+#   docker compose up -d
+services:
+  tasktui:
+    build: .
+    # O usa la imagen publicada, si existe: image: ghcr.io/alfonsohr98/tasktui:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"   # solo local; pon delante un proxy HTTPS (ver README)
+    environment:
+      API_TOKEN: ${API_TOKEN:?Define API_TOKEN en .env}
+      MCP_SECRET: ${MCP_SECRET:-}
+      TZ_OFFSET_MINUTES: ${TZ_OFFSET_MINUTES:-0}
+    volumes:
+      - tasktui-data:/data     # aquí vive la base SQLite
+
+volumes:
+  tasktui-data:

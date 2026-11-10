@@ -4,7 +4,7 @@ Responde siempre en español (código, comentarios y textos de la interfaz).
 
 ## Qué es
 Cliente nativo (iOS 17+, SwiftUI, sin dependencias) de un servidor propio de tareas
-en `https://tasks.madara.dev` (Cloudflare Worker + D1). Reemplaza a Todoist.
+en tu servidor (`https://tasks.tu-dominio.com`) (Cloudflare Worker + D1). Reemplaza a Todoist.
 El proyecto se genera con `xcodegen` desde `project.yml`; **añade archivos en `TaskTUI/`**
 (o en `TaskTUIWidget/` para el widget) y ejecuta `xcodegen` (no edites el `.xcodeproj`, está en .gitignore).
 `Support/` tiene los Info.plist y entitlements que genera xcodegen desde `project.yml`.

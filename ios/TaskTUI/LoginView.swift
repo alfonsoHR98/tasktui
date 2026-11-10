@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var store: Store
-    @State private var url = "https://tasks.madara.dev"
+    @State private var url = ""
     @State private var token = ""
     @State private var error: String?
     @State private var busy = false
@@ -11,7 +11,7 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section("Servidor") {
-                    TextField("https://tasks.madara.dev", text: $url)
+                    TextField("https://tasks.tu-dominio.com", text: $url)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                     SecureField("Token", text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()

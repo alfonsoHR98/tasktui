@@ -13,6 +13,7 @@
 pub mod dates;
 pub mod dto;
 pub mod markdown;
+pub mod mcp;
 pub mod model;
 pub mod quick;
 pub mod views;

@@ -63,7 +63,7 @@ fn today(q: &HashMap<String, String>, tz_offset_min: i64) -> NaiveDate {
     if let Some(d) = param(q, "today").and_then(|s| s.parse().ok()) {
         return d;
     }
-    (chrono::Utc::now() + Duration::minutes(tz_offset_min)).date_naive()
+    (chrono::Utc::now() + Duration::minutes(tz_offset_min.clamp(-1440, 1440))).date_naive()
 }
 
 /// Id corto de 5 caracteres, como en los `.md`. No es secreto.

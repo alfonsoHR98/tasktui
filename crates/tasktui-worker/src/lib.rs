@@ -97,7 +97,7 @@ fn today(url: &Url, env: &Env) -> NaiveDate {
         .and_then(|v| v.to_string().parse().ok())
         .unwrap_or(0);
     let now = chrono::DateTime::from_timestamp_millis(Date::now().as_millis() as i64).unwrap_or_default();
-    (now + Duration::minutes(offset)).date_naive()
+    (now + Duration::minutes(offset.clamp(-1440, 1440))).date_naive()
 }
 
 /// Parámetro de la URL; acepta también su nombre anterior en español.

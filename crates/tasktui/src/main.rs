@@ -269,7 +269,7 @@ fn main() -> Result<()> {
             t.description = description.unwrap_or_default().trim().to_string();
             let project = t.project.clone();
             let id = store.add(t, &project)?;
-            let t = store.task_at(store.find(&id).unwrap()).unwrap();
+            let t = store.find(&id).and_then(|p| store.task_at(p)).ok_or_else(|| anyhow::anyhow!("No encontré la tarea «{id}»"))?;
             if json {
                 println!("{}", task_json(t));
             } else {
@@ -346,7 +346,7 @@ fn main() -> Result<()> {
                 text.join(" ")
             };
             store.update(&id, |t| t.description = desc.trim().to_string())?;
-            let t = store.task_at(store.find(&id).unwrap()).unwrap();
+            let t = store.find(&id).and_then(|p| store.task_at(p)).ok_or_else(|| anyhow::anyhow!("No encontré la tarea «{id}»"))?;
             if json {
                 println!("{}", task_json(t));
             } else {
@@ -366,7 +366,7 @@ fn main() -> Result<()> {
                     t.deadline = None;
                 }
             })?;
-            let t = store.task_at(store.find(&id).unwrap()).unwrap();
+            let t = store.find(&id).and_then(|p| store.task_at(p)).ok_or_else(|| anyhow::anyhow!("No encontré la tarea «{id}»"))?;
             if json {
                 println!("{}", task_json(t));
             } else {
@@ -375,7 +375,7 @@ fn main() -> Result<()> {
         }
         Cmd::Note { id, text } => {
             store.add_note(&id, &text.join(" "))?;
-            let t = store.task_at(store.find(&id).unwrap()).unwrap();
+            let t = store.find(&id).and_then(|p| store.task_at(p)).ok_or_else(|| anyhow::anyhow!("No encontré la tarea «{id}»"))?;
             if json {
                 println!("{}", task_json(t));
             } else {

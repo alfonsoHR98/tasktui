@@ -127,21 +127,28 @@ impl Recurrence {
 
     /// Siguiente fecha a partir de `base` (la fecha de la ocurrencia actual).
     pub fn next(&self, base: NaiveDate) -> NaiveDate {
+        self.try_next(base).unwrap_or(base)
+    }
+
+    /// Como `next`, pero `None` si la fecha se sale del calendario.
+    fn try_next(&self, base: NaiveDate) -> Option<NaiveDate> {
         let n = self.interval;
+        let days = |k: i64| Duration::try_days(k);
+        let weeks = |k: i64| Duration::try_weeks(k);
         match self.unit {
-            Unit::Day => base + Duration::days(n as i64),
+            Unit::Day => base.checked_add_signed(days(n as i64)?),
             Unit::Week => match self.weekday {
                 Some(w) => {
-                    let mut d = base + Duration::days(1);
+                    let mut d = base.checked_add_signed(days(1)?)?;
                     while d.weekday() != w {
-                        d += Duration::days(1);
+                        d = d.checked_add_signed(days(1)?)?;
                     }
-                    d + Duration::weeks(n as i64 - 1)
+                    d.checked_add_signed(weeks(n as i64 - 1)?)
                 }
-                None => base + Duration::weeks(n as i64),
+                None => base.checked_add_signed(weeks(n as i64)?),
             },
-            Unit::Month => base.checked_add_months(Months::new(n)).unwrap_or(base),
-            Unit::Year => base.checked_add_months(Months::new(12 * n)).unwrap_or(base),
+            Unit::Month => base.checked_add_months(Months::new(n)),
+            Unit::Year => base.checked_add_months(Months::new(n.checked_mul(12)?)),
         }
     }
 

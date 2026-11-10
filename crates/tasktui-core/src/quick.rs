@@ -87,12 +87,13 @@ fn unit_es(s: &str) -> Option<Unit> {
     })
 }
 
-fn add(today: NaiveDate, n: u32, u: Unit) -> NaiveDate {
+/// Suma `n` unidades a `today`; `None` si la fecha se sale del calendario.
+fn add(today: NaiveDate, n: u32, u: Unit) -> Option<NaiveDate> {
     match u {
-        Unit::Day => today + Duration::days(n as i64),
-        Unit::Week => today + Duration::weeks(n as i64),
-        Unit::Month => today.checked_add_months(Months::new(n)).unwrap_or(today),
-        Unit::Year => today.checked_add_months(Months::new(12 * n)).unwrap_or(today),
+        Unit::Day => today.checked_add_signed(Duration::try_days(n as i64)?),
+        Unit::Week => today.checked_add_signed(Duration::try_weeks(n as i64)?),
+        Unit::Month => today.checked_add_months(Months::new(n)),
+        Unit::Year => today.checked_add_months(Months::new(n.checked_mul(12)?)),
     }
 }
 
@@ -174,7 +175,7 @@ fn try_special(toks: &[&str], i: usize, today: NaiveDate) -> Option<(usize, Effe
             let n = next(1).and_then(|s| s.parse::<u32>().ok());
             let u = next(2).and_then(|s| unit_es(&s));
             if let (Some(n), Some(u)) = (n, u) {
-                return Some((3, Effect::Due(add(today, n, u))));
+                return Some((3, Effect::Due(add(today, n, u)?)));
             }
         }
         "cada" | "every" => {
@@ -437,6 +438,33 @@ mod tests {
         assert_eq!(q.text, t.text);
         assert_eq!((q.due, q.time, q.deadline), (t.due, t.time, t.deadline));
         assert_eq!(q.project.as_deref(), Some("Mi Trabajo"));
+    }
+}
+
+#[cfg(test)]
+mod sin_panico_numeros {
+    use super::*;
+    #[test]
+    fn numeros_enormes_no_hacen_panico() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 10).unwrap();
+        let casos = [
+            "x en 99999999 días", "x in 4294967295 weeks", "x cada 99999999 meses", "x every 0 days",
+            "x cada 0 semanas", "x every 4294967295 years", "x 31/2", "x 0/0", "x 99/99/99999", "x 1/1/99999",
+            "x limit 31/2/2026", "x {99999999999/1}", "x 25:99", "x 0am", "x 13pm", "x en 0 días", "x cada 4294967295 lunes",
+        ];
+        for c in casos {
+            let q = std::panic::catch_unwind(|| {
+                let q = parse_quick(c, today);
+                if let Some(r) = &q.recurrence {
+                    let _ = r.first(today);
+                    let _ = r.next(today);
+                    let _ = r.to_es();
+                    let _ = r.to_obsidian();
+                }
+                q
+            });
+            assert!(q.is_ok(), "pánico con {c:?}");
+        }
     }
 }
 

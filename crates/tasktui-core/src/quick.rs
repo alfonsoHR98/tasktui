@@ -64,6 +64,9 @@ fn time_lit(s: &str) -> Option<NaiveTime> {
 
 /// Fecha escrita con los tokens `toks` completos (para `limit …` y `{…}`).
 fn date_of(toks: &[&str], today: NaiveDate) -> Option<(usize, NaiveDate)> {
+    if toks.is_empty() {
+        return None; // «{}» o «{ }»: no hay fecha dentro
+    }
     match try_special(toks, 0, today)? {
         (n, Effect::Due(d)) => Some((n, d)),
         _ => None,
@@ -434,5 +437,19 @@ mod tests {
         assert_eq!(q.text, t.text);
         assert_eq!((q.due, q.time, q.deadline), (t.due, t.time, t.deadline));
         assert_eq!(q.project.as_deref(), Some("Mi Trabajo"));
+    }
+}
+
+#[cfg(test)]
+mod sin_panico {
+    use super::*;
+    #[test]
+    fn combinaciones_raras_no_hacen_panico() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 10).unwrap();
+        let alfabeto = ["t", "{", "}", "{}", "{ }", "limit", "cada", "every", "en", "in", "+", "#", "\\", "p", "9", "am", ":", "/", "x", "{t}", "{t", "t}", "{en", "3}", "hoy", "mañana", "días", "limit{", "{}}", "{{", "pm", "12:", "1/", "/1"];
+        for a in alfabeto { for b in alfabeto { for c in alfabeto {
+            let s = format!("{a} {b} {c}");
+            let _ = std::panic::catch_unwind(|| parse_quick(&s, today)).map_err(|_| panic!("panico con {s:?}"));
+        }}}
     }
 }

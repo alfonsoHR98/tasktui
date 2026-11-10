@@ -4,7 +4,6 @@
 services:
   tasktui:
     build: .
-    # O usa la imagen publicada, si existe: image: ghcr.io/alfonsohr98/tasktui:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:8787:8787"   # solo local; pon delante un proxy HTTPS (ver README)

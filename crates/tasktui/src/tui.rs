@@ -803,10 +803,10 @@ impl App {
         };
         let mut icons = vec![];
         if !t.description.trim().is_empty() {
-            icons.push(Span::raw("📝"));
+            icons.push(Span::raw("¶"));
         }
         if !t.notes.is_empty() {
-            icons.push(Span::styled(format!("💬{}", t.notes.len()), Style::new().fg(Color::DarkGray)));
+            icons.push(Span::styled(format!("✎{}", t.notes.len()), Style::new().fg(Color::DarkGray)));
         }
         if t.recurrence.is_some() {
             icons.push(Span::styled("↻", Style::new().fg(Color::Cyan)));
@@ -937,7 +937,7 @@ impl App {
             }
             let color = if t.done { Color::DarkGray } else if d < today { Color::Red } else if d == today { Color::Green } else { Color::Cyan };
             lines.push(Line::from(vec![
-                label("📅 Fecha"),
+                label("◷ Fecha"),
                 Span::styled(s, Style::new().fg(color)),
                 Span::styled(relative(d, today, t.done), dim),
             ]));
@@ -1053,7 +1053,7 @@ impl App {
                 let q = quick::parse_quick(&self.input.text(), self.today);
                 let mut desc = vec![];
                 if let Some(d) = q.due {
-                    let mut s = format!("📅 {}", dates::long(d, self.today));
+                    let mut s = format!("◷ {}", dates::long(d, self.today));
                     if let Some(h) = q.time {
                         s.push_str(&format!(" · {}", h.format("%H:%M")));
                     }
@@ -1098,7 +1098,7 @@ impl App {
         };
         let due = q.due.or((adding && self.view == View::Today).then_some(self.today));
         if let Some(d) = due {
-            let mut s = format!("📅 {}", dates::long(d, self.today));
+            let mut s = format!("◷ {}", dates::long(d, self.today));
             if let Some(h) = q.time {
                 s.push_str(&format!(" · {}", h.format("%H:%M")));
             }

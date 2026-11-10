@@ -151,10 +151,10 @@ fn task_plain(t: &Task, show_project: bool) -> String {
         s.push_str(&format!(" 🎯{}", dates::rel(d, today)));
     }
     if !t.description.trim().is_empty() {
-        s.push_str(" 📝");
+        s.push_str(" ¶");
     }
     if !t.notes.is_empty() {
-        s.push_str(&format!(" 💬{}", t.notes.len()));
+        s.push_str(&format!(" ✎{}", t.notes.len()));
     }
     if t.recurrence.is_some() {
         s.push_str(" ↻");
@@ -486,7 +486,16 @@ fn server(action: Option<&ServerCmd>, json: bool) -> Result<()> {
 pub fn edit_text(id: &str, current: &str) -> Result<String> {
     let path = std::env::temp_dir().join(format!("tasktui-{id}.md"));
     std::fs::write(&path, current)?;
-    let editor = std::env::var("VISUAL").or_else(|_| std::env::var("EDITOR")).unwrap_or_else(|_| "nano".into());
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| {
+            // En macOS `nano` es pico (cursor poco visible): preferir nvim/vim.
+            ["nvim", "vim", "nano"]
+                .into_iter()
+                .find(|e| std::process::Command::new("which").arg(e).output().map(|o| o.status.success()).unwrap_or(false))
+                .unwrap_or("nano")
+                .into()
+        });
     let mut parts = editor.split_whitespace();
     let status = std::process::Command::new(parts.next().unwrap_or("nano")).args(parts).arg(&path).status()?;
     let text = std::fs::read_to_string(&path)?;

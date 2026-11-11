@@ -75,9 +75,34 @@ func newRoot() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
 		cmdAdd(a), cmdList(a), cmdShow(a), cmdDone(a), cmdEdit(a), cmdDescribe(a), cmdNote(a), cmdRm(a),
-		cmdProjects(a), cmdLabels(a), cmdDir(), cmdServer(a), cmdExport(a), cmdNotify(a),
+		cmdProjects(a), cmdLabels(a), cmdDir(), cmdServer(a), cmdExport(a), cmdNotify(a), cmdDemo(),
 	)
 	return root
+}
+
+// cmdDemo abre la TUI con tareas de ejemplo en una carpeta temporal: sirve para
+// probar tasktui sin configurar nada y sin tocar tus tareas.
+func cmdDemo() *cobra.Command {
+	return &cobra.Command{
+		Use:   "demo",
+		Short: "Abre la TUI con tareas de ejemplo (no toca tus tareas)",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			dir, err := os.MkdirTemp("", "tasktui-demo-")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(dir)
+			s, err := store.OpenFiles(dir)
+			if err != nil {
+				return err
+			}
+			if err := store.SeedDemo(s, core.Today()); err != nil {
+				return err
+			}
+			return tui.Run(s)
+		},
+	}
 }
 
 func findTask(s store.Store, id string) (*core.Task, error) { return store.FindTask(s, id) }

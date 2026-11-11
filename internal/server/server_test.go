@@ -115,3 +115,29 @@ func TestMCP(t *testing.T) {
 		t.Errorf("notificación: %d", s)
 	}
 }
+
+func TestEliminarProyecto(t *testing.T) {
+	srv := newTestServer(t)
+	call(t, srv, "POST", "/api/tasks", `{"text":"Pagar luz","project":"Finanzas"}`)
+	call(t, srv, "POST", "/api/tasks", `{"text":"Otra","project":"Casa/Cocina"}`)
+	if s, _ := call(t, srv, "DELETE", "/api/projects?name=Inbox", ""); s != 400 {
+		t.Errorf("Inbox: %d", s)
+	}
+	if s, _ := call(t, srv, "DELETE", "/api/projects", ""); s != 400 {
+		t.Errorf("sin nombre: %d", s)
+	}
+	if s, _ := call(t, srv, "DELETE", "/api/projects?name=nada", ""); s != 404 {
+		t.Errorf("inexistente: %d", s)
+	}
+	s, v := call(t, srv, "DELETE", "/api/projects?name=finanzas", "")
+	if s != 200 || v["tasks"] != float64(1) || v["deleted"] != "Finanzas" {
+		t.Errorf("borrar: %d %v", s, v)
+	}
+	if s, _ := call(t, srv, "DELETE", "/api/projects?name=Casa%2FCocina", ""); s != 200 {
+		t.Errorf("con barra: %d", s)
+	}
+	_, list := call(t, srv, "GET", "/api/tasks?view=all", "")
+	if b, _ := json.Marshal(list); strings.Contains(string(b), "Pagar luz") || strings.Contains(string(b), "Otra") {
+		t.Errorf("las tareas debían borrarse: %s", b)
+	}
+}

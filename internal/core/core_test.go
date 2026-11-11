@@ -300,7 +300,7 @@ func TestVistaHoy(t *testing.T) {
 }
 
 func TestMCPTools(t *testing.T) {
-	if len(MCPTools()) != 10 {
+	if len(MCPTools()) != 11 {
 		t.Error("deben ser 10 herramientas")
 	}
 	c, err := PlanTool("list_tasks", map[string]any{"view": "+Niuko Consultores", "include_done": true})

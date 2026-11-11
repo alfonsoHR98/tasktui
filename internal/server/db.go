@@ -323,6 +323,40 @@ func (d *DB) save(t *core.Task) error {
 	return err
 }
 
+// DeleteProject borra el proyecto y todas sus tareas. Devuelve el nombre canónico y
+// cuántas tareas se borraron; ok=false si no existe.
+func (d *DB) DeleteProject(name string) (string, int, bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.deleteProject(name)
+}
+
+func (d *DB) deleteProject(name string) (string, int, bool, error) {
+	canon, err := d.canonicalProject(name)
+	if err != nil {
+		return "", 0, false, err
+	}
+	tx, err := d.db.Begin()
+	if err != nil {
+		return "", 0, false, err
+	}
+	defer tx.Rollback()
+	rt, err := tx.Exec("DELETE FROM tasks WHERE project = ?1 COLLATE NOCASE", canon)
+	if err != nil {
+		return "", 0, false, err
+	}
+	rp, err := tx.Exec("DELETE FROM projects WHERE name = ?1 COLLATE NOCASE", canon)
+	if err != nil {
+		return "", 0, false, err
+	}
+	nt, _ := rt.RowsAffected()
+	np, _ := rp.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return "", 0, false, err
+	}
+	return canon, int(nt), nt > 0 || np > 0, nil
+}
+
 // Delete borra la tarea; false si no existía.
 func (d *DB) Delete(id string) (bool, error) {
 	d.mu.Lock()

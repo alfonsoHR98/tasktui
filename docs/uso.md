@@ -51,7 +51,7 @@ notas, `↻` se repite). En terminales anchas el detalle va a la derecha.
 | `i` | editar la descripción en `$EDITOR` |
 | `n` | añadir una nota (con la fecha de hoy) |
 | `1`–`4` | prioridad |
-| `d` | eliminar (pide confirmación) |
+| `d` | eliminar la tarea (pide confirmación); con el foco en el panel y un proyecto seleccionado, elimina el proyecto y sus tareas (`u` lo deshace) |
 | `u` | deshacer (hasta 50 pasos) |
 | `/` · `Esc` | buscar · limpiar |
 | `H` | mostrar completadas |
@@ -74,6 +74,7 @@ tasktui describe frlyy Texto nuevo         # sin texto abre $EDITOR
 tasktui note frlyy Llamaron, sigue pendiente
 tasktui rm frlyy
 tasktui projects | labels
+tasktui projects rm <proyecto> [--yes]   # elimina el proyecto y sus tareas
 tasktui list --json                        # cualquier comando acepta --json
 ```
 

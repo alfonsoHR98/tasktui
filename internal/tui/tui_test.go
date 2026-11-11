@@ -125,3 +125,36 @@ func TestVariosTamanos(t *testing.T) {
 		key(m, "esc")
 	}
 }
+
+func TestEliminarProyectoDesdePanel(t *testing.T) {
+	m := newTestModel(t, 100, 30)
+	key(m, "h") // foco al panel
+	for i := 0; i < 10 && m.view.Kind != core.ViewProject; i++ {
+		key(m, "j")
+	}
+	if m.view.Kind != core.ViewProject || m.view.Name != "Finanzas" {
+		t.Fatalf("vista = %+v", m.view)
+	}
+	key(m, "d")
+	if m.mode != modeConfirm || !strings.Contains(screen(m), "proyecto «Finanzas»") {
+		t.Fatalf("debía pedir confirmación:\n%s", screen(m))
+	}
+	key(m, "n")
+	if len(m.store.Projects()) != 2 {
+		t.Error("cancelar no debía borrar")
+	}
+	key(m, "d")
+	key(m, "y")
+	for _, p := range m.store.Projects() {
+		if p == "Finanzas" {
+			t.Error("Finanzas sigue existiendo")
+		}
+	}
+	if m.view.Kind != core.ViewToday {
+		t.Errorf("debía volver a Hoy: %+v", m.view)
+	}
+	key(m, "u")
+	if len(m.store.Projects()) != 2 {
+		t.Error("deshacer debía devolver el proyecto")
+	}
+}

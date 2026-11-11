@@ -65,6 +65,8 @@ func MCPTools() []obj {
 			"inputSchema": schema(obj{})},
 		{"name": "create_project", "description": "Crea un proyecto.",
 			"inputSchema": schema(obj{"name": str("Nombre")}, "name")},
+		{"name": "delete_project", "description": "Elimina un proyecto y todas sus tareas definitivamente. Inbox no se puede eliminar.",
+			"inputSchema": schema(obj{"name": str("Nombre")}, "name")},
 		{"name": "list_labels", "description": "Lista las etiquetas con tareas pendientes.",
 			"inputSchema": schema(obj{})},
 	}
@@ -162,6 +164,12 @@ func PlanTool(name string, a obj) (MCPCall, error) {
 			return MCPCall{}, err
 		}
 		return MCPCall{"POST", "/api/projects", obj{"name": n}}, nil
+	case "delete_project":
+		n, err := need(a, "name")
+		if err != nil {
+			return MCPCall{}, err
+		}
+		return MCPCall{"DELETE", "/api/projects?name=" + pathEnc(n), nil}, nil
 	case "list_labels":
 		return MCPCall{"GET", "/api/labels", nil}, nil
 	}

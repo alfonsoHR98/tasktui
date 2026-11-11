@@ -15,6 +15,7 @@ Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
 | POST | `/api/tasks/:id/notes` `{"text": "…"}` | añadir nota con la fecha de hoy |
 | DELETE | `/api/tasks/:id` | eliminar |
 | GET / POST | `/api/projects` | listar / crear `{"name": "…"}` |
+| DELETE | `/api/projects?name=…` | elimina el proyecto **y todas sus tareas** (Inbox no se puede) |
 | GET | `/api/labels` | etiquetas con pendientes |
 | GET | `/api/export` · POST `/api/import` | respaldo y carga (conserva ids) |
 

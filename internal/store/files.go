@@ -580,6 +580,30 @@ func (s *FileStore) Delete(id string) error {
 	return s.write(p.A)
 }
 
+func (s *FileStore) DeleteProject(name string) (int, error) {
+	if strings.EqualFold(name, core.Inbox) {
+		return 0, errors.New("El proyecto Inbox no se puede eliminar")
+	}
+	if err := s.Reload(); err != nil {
+		return 0, err
+	}
+	di := s.docIndex(name)
+	if di < 0 {
+		return 0, fmt.Errorf("No existe el proyecto «%s»", name)
+	}
+	n := 0
+	for _, l := range s.docs[di].lines {
+		if l.isTask() {
+			n++
+		}
+	}
+	if err := os.Remove(s.docs[di].path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, err
+	}
+	s.docs = append(s.docs[:di], s.docs[di+1:]...)
+	return n, nil
+}
+
 func (s *FileStore) Snapshot() (Snapshot, error) {
 	var snap fileSnapshot
 	for _, d := range s.docs {

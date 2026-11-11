@@ -394,6 +394,10 @@ func (m *model) statusLine() string {
 	switch {
 	case m.mode == modeConfirm:
 		name := ""
+		if m.inProj != "" {
+			n := m.countOpenAll(m.inProj)
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(redC).Render(fit(fmt.Sprintf(" ¿Eliminar el proyecto «%s» y sus %d tareas? (y/n)", m.inProj, n), m.w))
+		}
 		if t := m.selected(); t != nil {
 			name = t.Text
 		}
@@ -552,7 +556,7 @@ func (m *model) drawHelp(frame []string) []string {
 		{"n", "añadir una nota con fecha"},
 		{"t", "poner para hoy"},
 		{"1 2 3 4", "prioridad"},
-		{"d", "eliminar"},
+		{"d", "eliminar (en el panel de proyectos: el proyecto)"},
 		{"u", "deshacer"},
 		{"r", "recargar desde disco"},
 		{"q", "salir"},

@@ -308,6 +308,18 @@ func (r *RemoteStore) Delete(id string) error {
 	return r.Reload()
 }
 
+func (r *RemoteStore) DeleteProject(name string) (int, error) {
+	if strings.EqualFold(name, core.Inbox) {
+		return 0, errors.New("El proyecto Inbox no se puede eliminar")
+	}
+	v, _, err := r.client.do("DELETE", "projects?name="+url.QueryEscape(name), nil)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := v["tasks"].(float64)
+	return int(n), r.Reload()
+}
+
 func (r *RemoteStore) AddNote(id, text string) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("La nota está vacía")

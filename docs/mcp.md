@@ -5,7 +5,7 @@ solo JSON). Así una IA puede consultar y manejar tus tareas con las mismas
 reglas que la TUI (captura rápida, repeticiones…).
 
 Herramientas: `list_tasks`, `get_task`, `add_task`, `update_task`,
-`complete_task`, `add_note`, `delete_task`, `list_projects`, `create_project`
+`complete_task`, `add_note`, `delete_task`, `list_projects`, `create_project`, `delete_project`
 y `list_labels`.
 
 > **El secreto va en la URL** porque los conectores de claude.ai no envían

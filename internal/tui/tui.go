@@ -78,6 +78,7 @@ type model struct {
 	mode     mode
 	inKind   inputKind
 	inID     string // id de la tarea de Edit/Schedule/Note/Confirm
+	inProj   string // proyecto a eliminar en Confirm (vacío si es una tarea)
 	input    input
 	query    string
 	showDone bool
@@ -215,6 +216,17 @@ func (m *model) setView(v core.View) {
 	m.view = v
 	m.sel, m.selID, m.scroll = 0, "", 0
 	m.refresh()
+}
+
+// countOpenAll cuenta todas las tareas del proyecto, pendientes o no.
+func (m *model) countOpenAll(project string) int {
+	n := 0
+	for _, e := range m.store.Tasks() {
+		if strings.EqualFold(e.Task.Project, project) {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *model) moveSide(delta int) {
@@ -388,9 +400,21 @@ func (m *model) onKey(k tea.KeyMsg) tea.Cmd {
 	case modeHelp:
 		m.mode = modeNormal
 	case modeConfirm:
-		id := m.inID
-		m.mode = modeNormal
+		id, proj := m.inID, m.inProj
+		m.mode, m.inProj = modeNormal, ""
 		if k.String() == "y" || k.String() == "Y" {
+			if proj != "" {
+				m.mutate(func(s store.Store) (string, string, error) {
+					n, err := s.DeleteProject(proj)
+					return fmt.Sprintf("Proyecto «%s» eliminado (%d tareas) · u deshace", proj, n), "", err
+				})
+				if !strings.HasPrefix(m.msg, "Error") {
+					msg := m.msg
+					m.setView(core.View{Kind: core.ViewToday})
+					m.msg = msg
+				}
+				return nil
+			}
 			m.mutate(func(s store.Store) (string, string, error) {
 				return "Eliminada", "", s.Delete(id)
 			})
@@ -523,6 +547,16 @@ func (m *model) onNormalKey(k tea.KeyMsg) tea.Cmd {
 		} else {
 			m.msg = "Nada que deshacer"
 		}
+	case "d":
+		if side {
+			if m.view.Kind != core.ViewProject {
+				m.msg = "Sitúate en un proyecto para eliminarlo"
+				return nil
+			}
+			m.inProj, m.mode = m.view.Name, modeConfirm
+			return nil
+		}
+		return m.onTaskKey(key)
 	case "r":
 		if err := m.store.Reload(); err != nil {
 			m.msg = "Error: " + err.Error()

@@ -373,8 +373,45 @@ func cmdRm(a *app) *cobra.Command {
 	}
 }
 
+func cmdProjectRm(a *app) *cobra.Command {
+	var yes bool
+	c := &cobra.Command{
+		Use:   "rm <proyecto>",
+		Short: "Elimina un proyecto y todas sus tareas",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, err := a.open()
+			if err != nil {
+				return err
+			}
+			name := strings.TrimPrefix(args[0], "+")
+			total := 0
+			for _, e := range s.Tasks() {
+				if strings.EqualFold(e.Task.Project, name) {
+					total++
+				}
+			}
+			if total > 0 && !yes {
+				return fmt.Errorf("«%s» tiene %d tareas; se borrarán con el proyecto. Repite con --yes para confirmar", name, total)
+			}
+			n, err := s.DeleteProject(name)
+			if err != nil {
+				return err
+			}
+			if a.json {
+				printJSON(map[string]any{"deleted": name, "tasks": n})
+				return nil
+			}
+			fmt.Printf("Proyecto «%s» eliminado (%d tareas)\n", name, n)
+			return nil
+		},
+	}
+	c.Flags().BoolVarP(&yes, "yes", "y", false, "No pedir confirmación aunque tenga tareas")
+	return c
+}
+
 func cmdProjects(a *app) *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:   "projects",
 		Short: "Lista los proyectos",
 		Args:  cobra.NoArgs,
@@ -407,6 +444,8 @@ func cmdProjects(a *app) *cobra.Command {
 			return nil
 		},
 	}
+	c.AddCommand(cmdProjectRm(a))
+	return c
 }
 
 func cmdLabels(a *app) *cobra.Command {

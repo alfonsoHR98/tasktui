@@ -165,6 +165,8 @@ func (d *DB) route(tzMin int, method, pathAndQuery string, raw []byte) (result, 
 		return d.projectsOut()
 	case method == "POST" && len(parts) == 1 && parts[0] == "projects":
 		return d.createProject(raw)
+	case method == "DELETE" && len(parts) == 1 && parts[0] == "projects":
+		return d.deleteProjectAPI(q)
 	case method == "GET" && len(parts) == 1 && parts[0] == "labels":
 		return d.labels()
 	case method == "GET" && len(parts) == 1 && parts[0] == "export":
@@ -455,6 +457,25 @@ func (d *DB) createProject(raw []byte) (result, *APIError) {
 		return result{}, internal(err)
 	}
 	return result{201, map[string]string{"name": name}}, nil
+}
+
+func (d *DB) deleteProjectAPI(q query) (result, *APIError) {
+	name, _ := q.param("name")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return result{}, bad("Falta ?name= con el proyecto a eliminar")
+	}
+	if strings.EqualFold(name, core.Inbox) {
+		return result{}, bad("El proyecto Inbox no se puede eliminar")
+	}
+	canon, n, found, err := d.deleteProject(name)
+	if err != nil {
+		return result{}, internal(err)
+	}
+	if !found {
+		return result{}, &APIError{404, fmt.Sprintf("No existe el proyecto «%s»", name)}
+	}
+	return ok(map[string]any{"deleted": canon, "tasks": n})
 }
 
 func (d *DB) labels() (result, *APIError) {

@@ -157,3 +157,38 @@ func TestNotasViajanConLaTarea(t *testing.T) {
 		t.Error("las notas deben borrarse con la tarea")
 	}
 }
+
+func TestEliminarProyecto(t *testing.T) {
+	s := tempStore(t)
+	if _, err := s.Add(core.NewTask("Pan"), "Casa"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Add(core.NewTask("Luz"), "Casa"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DeleteProject("Inbox"); err == nil {
+		t.Error("Inbox no debe poder eliminarse")
+	}
+	if _, err := s.DeleteProject("nada"); err == nil {
+		t.Error("un proyecto inexistente debe fallar")
+	}
+	snap, _ := s.Snapshot()
+	n, err := s.DeleteProject("casa")
+	if err != nil || n != 2 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "Casa.md")); !os.IsNotExist(err) {
+		t.Error("el archivo debía borrarse")
+	}
+	for _, p := range s.Projects() {
+		if p == "Casa" {
+			t.Error("el proyecto sigue listado")
+		}
+	}
+	if err := s.Restore(snap); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Tasks()) != 2 {
+		t.Errorf("deshacer debía devolver 2 tareas, hay %d", len(s.Tasks()))
+	}
+}

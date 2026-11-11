@@ -43,6 +43,9 @@ type Store interface {
 	// Toggle completa o reabre; devuelve true si quedó completada.
 	Toggle(id string) (bool, error)
 	Delete(id string) error
+	// DeleteProject borra el proyecto y todas sus tareas; devuelve cuántas tareas.
+	// Inbox no se puede eliminar.
+	DeleteProject(name string) (int, error)
 	AddNote(id, text string) error
 	Snapshot() (Snapshot, error)
 	Restore(Snapshot) error

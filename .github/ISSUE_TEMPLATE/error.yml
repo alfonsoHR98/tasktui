@@ -1,0 +1,29 @@
+name: Reportar un error
+description: Algo no funciona como debería
+labels: [bug]
+body:
+  - type: textarea
+    id: que
+    attributes:
+      label: ¿Qué pasó?
+      description: Qué hiciste, qué esperabas y qué ocurrió. Si es de la captura rápida, pega el texto exacto.
+    validations:
+      required: true
+  - type: dropdown
+    id: donde
+    attributes:
+      label: ¿Dónde?
+      options: [TUI, CLI, Servidor / API, Página web, MCP, Avisos en la Mac, Documentación]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión
+      description: Salida de `tasktui --version`, sistema operativo y terminal.
+      placeholder: tasktui 0.3.0 · macOS 15 · Ghostty
+  - type: dropdown
+    id: modo
+    attributes:
+      label: Modo
+      options: [Local (archivos .md), Remoto (servidor)]

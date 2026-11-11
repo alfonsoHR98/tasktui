@@ -1,0 +1,36 @@
+# Binarios de cada versión (ver .github/workflows/release.yml).
+version: 2
+project_name: tasktui
+
+builds:
+  - id: tasktui
+    main: ./cmd/tasktui
+    binary: tasktui
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/alfonsoHR98/tasktui/internal/core.Version={{ .Version }}
+  - id: tasktui-server
+    main: ./cmd/tasktui-server
+    binary: tasktui-server
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/alfonsoHR98/tasktui/internal/core.Version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md, LICENSE, CHANGELOG.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:"]

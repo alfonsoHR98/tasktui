@@ -67,6 +67,17 @@ tasktui                                                  # abre la TUI
 tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 ```
 
+### Avisos en la Mac
+
+```sh
+tasktui notify install     # arranca al iniciar sesión (launchd)
+tasktui notify test        # muestra una alerta de prueba
+tasktui notify uninstall
+```
+
+Al llegar la hora de una tarea (9:00 si solo tiene fecha) aparece una alerta que se queda
+en pantalla hasta que la cierras, con los botones **Completar**, **Posponer 10 min** y **Cerrar**.
+
 ## Qué incluye
 
 - **TUI y CLI** (`tasktui`): atajos estilo vim, deshacer, `--json` en cada comando. → [uso](docs/uso.md)
@@ -119,7 +130,7 @@ tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 - **Siguiente:** avisos push en la página web; imagen de Docker publicada; otras bases (Postgres).
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.
-- **Fase 4:** notificaciones en macOS/iPhone, publicación (`brew`).
+- **Fase 4:** publicación (`brew`). Avisos ya hechos: iPhone (locales) y Mac (`tasktui notify`).
 
 ## Licencia
 

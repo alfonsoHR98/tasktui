@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tasktui — tus tareas viven en tu terminal</title>
+<meta name="description" content="Gestor de tareas de terminal, tuyo y en tu propio servidor: TUI y CLI en Go, captura rápida en lenguaje natural, página web instalable y servidor MCP para Claude.">
+<meta name="theme-color" content="#0a0a0c">
+<meta property="og:title" content="tasktui — tus tareas viven en tu terminal">
+<meta property="og:description" content="TUI y CLI en Go, captura rápida en lenguaje natural, servidor propio con Docker y MCP para Claude.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="og.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<aside class="rail" aria-label="Navegación">
+  <a class="logo" href="#inicio" aria-label="tasktui, inicio">
+    <svg viewBox="0 0 11 11" aria-hidden="true"><path d="M1 5h2v2H1zM3 7h2v2H3zM5 5h2v2H5zM7 3h2v2H7zM9 1h2v2H9z"/></svg>
+    <span>task<b>tui</b></span>
+  </a>
+
+  <nav class="pane nav" aria-label="Secciones">
+    <span class="pt">tasktui</span>
+    <ul>
+      <li><a href="#inicio" data-spy="inicio"><i class="c-blue">▣</i>Inicio</a></li>
+      <li><a href="#demo" data-spy="demo"><i class="c-green">◉</i>Demo en vivo</a></li>
+      <li><a href="#captura" data-spy="captura"><i class="c-cyan">◷</i>Captura rápida</a></li>
+      <li><a href="#clientes" data-spy="clientes"><i class="c-sub">≡</i>Clientes</a></li>
+      <li><a href="#instalar" data-spy="instalar"><i class="c-yellow">▸</i>Instalar</a></li>
+      <li><a href="#datos" data-spy="datos"><i class="c-yellow">▸</i>Tus datos</a></li>
+      <li><a href="#atajos" data-spy="atajos"><i class="c-yellow">▸</i>Atajos</a></li>
+    </ul>
+    <h2>Documentación</h2>
+    <ul>
+      <li><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/uso.md"><i class="c-mauve">#</i>uso<em>↗</em></a></li>
+      <li><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/docker.md"><i class="c-mauve">#</i>docker<em>↗</em></a></li>
+      <li><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/mcp.md"><i class="c-mauve">#</i>mcp<em>↗</em></a></li>
+      <li><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/api.md"><i class="c-mauve">#</i>api<em>↗</em></a></li>
+    </ul>
+    <div class="read" aria-hidden="true">
+      <div><span>leído</span><span id="read-pct">0%</span></div>
+      <div class="bar"><span id="read-bar"></span></div>
+    </div>
+  </nav>
+
+  <a class="gh" href="https://github.com/alfonsoHR98/tasktui">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.77-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+    <span>GitHub</span>
+  </a>
+</aside>
+
+<main id="contenido">
+  <div class="aurora" aria-hidden="true"></div>
+
+  <section class="hero" id="inicio" data-section>
+    <h1>Tus tareas viven<br>en tu <span>terminal</span><i class="caret" aria-hidden="true"></i></h1>
+    <p class="lead">tasktui es un gestor de tareas hecho para el teclado: una TUI y una CLI en Go,
+      captura rápida en lenguaje natural y un servidor <strong>tuyo</strong> que comparte las mismas
+      tareas con el navegador, el celular y Claude.</p>
+    <ul class="chips" aria-label="Características">
+      <li>Un binario en Go</li>
+      <li>Markdown o SQLite</li>
+      <li>MCP para Claude</li>
+      <li>Licencia MIT</li>
+    </ul>
+    <div class="cta">
+      <a class="btn primary" href="#instalar">Instalar <span aria-hidden="true">→</span></a>
+      <a class="btn" href="#demo">Probar aquí mismo <span aria-hidden="true">↓</span></a>
+    </div>
+    <div class="cmd">
+      <span class="prompt" aria-hidden="true">❯</span>
+      <code id="cmd-install">go install github.com/alfonsoHR98/tasktui/cmd/tasktui@latest</code>
+      <button class="copy" data-copy="#cmd-install" type="button">copiar</button>
+    </div>
+  </section>
+
+  <section class="demo" id="demo" data-section>
+    <div class="win">
+      <div class="win-bar">
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="win-title">tasktui demo</span>
+        <span class="win-hint">haz clic y usa el teclado</span>
+      </div>
+      <div class="tui" id="tui" tabindex="0" role="application"
+           aria-label="Demostración interactiva de tasktui. Usa j y k para moverte, x para completar, a para añadir.">
+<pre class="fallback">╭─ tasktui ───────────╮╭─ Hoy · 3 ──────────────────────────────────╮
+│ ▣ Inbox           2 ││ Vencidas ───────────────────────────────── │
+│ ◉ Hoy             3 ││ ◉ Renovar el dominio  #web    ayer  Trabajo│
+│ ◷ Próximos        5 ││ mié 11 nov · hoy ───────────────────────── │
+│ ≡ Todas          12 ││ ◉ Pagar la luz  #casa   hoy 18:00  Finanzas│
+│                     ││ ○ Llamar al dentista    hoy 12:30  Inbox   │
+╰─────────────────────╯╰────────────────────────────────────────────╯
+ NORMAL  a añadir · x completar · e editar · / buscar · ? ayuda</pre>
+      </div>
+    </div>
+    <p class="demo-note">Es una réplica en el navegador con tareas de ejemplo: nada se guarda.
+      En tu terminal, lo mismo con <code>tasktui demo</code>.</p>
+  </section>
+
+  <section id="captura" data-section>
+    <h2>Escribe como hablas</h2>
+    <p class="lead">Una sola línea lleva fecha, hora, prioridad, proyecto, etiquetas y repetición.
+      tasktui la entiende mientras escribes, en la terminal, en la web y por la API.</p>
+
+    <div class="play">
+      <label for="play-in">Prueba la captura rápida</label>
+      <div class="play-input">
+        <span class="prompt" aria-hidden="true">❯</span>
+        <input id="play-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               value="Pagar la luz mañana 18:00 p1 +Finanzas #casa cada mes">
+      </div>
+      <div class="play-tokens" id="play-tokens" aria-hidden="true"></div>
+      <dl class="play-out" id="play-out" aria-live="polite"></dl>
+      <div class="play-ex">
+        <span>ejemplos</span>
+        <button type="button" data-ex="Entregar el reporte viernes 9am p2 +Trabajo limit lunes">con fecha límite</button>
+        <button type="button" data-ex="Regar las plantas cada 3 días #casa">que se repite</button>
+        <button type="button" data-ex="Llamar a mamá en 2 días 19:30">fecha relativa</button>
+        <button type="button" data-ex="Leer \hoy de Saramago +Lectura #libros">palabra literal</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="clientes" data-section>
+    <h2>Un servidor, todas tus pantallas</h2>
+    <p class="lead">Un solo servidor es la fuente de verdad y todos los clientes hablan la misma API.
+      La lógica vive en un núcleo compartido, así que una tarea se interpreta igual en todas partes.</p>
+
+    <div class="arch" role="img" aria-label="La TUI, la CLI, la página web y Claude se conectan por HTTPS con token a tu servidor, que guarda las tareas en SQLite.">
+      <ul class="arch-clients">
+        <li><b>TUI</b><span>terminal</span></li>
+        <li><b>CLI</b><span>scripts</span></li>
+        <li><b>Web</b><span>PWA</span></li>
+        <li><b>Claude</b><span>MCP</span></li>
+      </ul>
+      <div class="arch-wire"><span>HTTPS + token</span></div>
+      <div class="arch-server">
+        <b>tasktui-server</b>
+        <span>API · web · MCP</span>
+        <span class="arch-db">SQLite en un volumen</span>
+      </div>
+    </div>
+
+    <table class="ls">
+      <caption class="vh">Clientes de tasktui</caption>
+      <tbody>
+        <tr><th scope="row"><i class="c-green">◉</i> TUI</th><td>Tres paneles, atajos estilo vim, deshacer de 50 pasos y detalle con descripción y notas.</td><td><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/uso.md">uso.md</a></td></tr>
+        <tr><th scope="row"><i class="c-cyan">❯</i> CLI</th><td>Cada comando acepta <code>--json</code>: sirve igual para tus scripts que para un agente.</td><td><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/uso.md#cli-scripts-y-claude">uso.md</a></td></tr>
+        <tr><th scope="row"><i class="c-blue">▣</i> Web</th><td>Página instalable servida por el mismo binario; en lectura funciona sin conexión.</td><td><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/web.md">web.md</a></td></tr>
+        <tr><th scope="row"><i class="c-mauve">#</i> MCP</th><td>Claude consulta y maneja tus tareas con las mismas reglas que la TUI.</td><td><a href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/mcp.md">mcp.md</a></td></tr>
+        <tr><th scope="row"><i class="c-yellow">▸</i> Mac</th><td>Avisos nativos a la hora de cada tarea, con Completar y Posponer.</td><td><a href="https://github.com/alfonsoHR98/tasktui#avisos-en-la-mac">README</a></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="instalar" data-section>
+    <h2>Instálalo en minutos</h2>
+    <p class="lead">Empieza solo con la terminal y, cuando quieras tus tareas en más lugares, levanta el servidor.</p>
+
+    <div class="tabs">
+      <div role="tablist" aria-label="Formas de instalar">
+        <button role="tab" id="tab-term" aria-controls="p-term" aria-selected="true" type="button">Solo terminal</button>
+        <button role="tab" id="tab-docker" aria-controls="p-docker" aria-selected="false" tabindex="-1" type="button">Servidor con Docker</button>
+        <button role="tab" id="tab-bin" aria-controls="p-bin" aria-selected="false" tabindex="-1" type="button">Servidor sin Docker</button>
+      </div>
+
+      <div role="tabpanel" id="p-term" aria-labelledby="tab-term">
+        <pre class="code" id="code-term"><span class="cm"># Requiere Go 1.27 o superior</span>
+<span class="pr">❯</span> go install github.com/alfonsoHR98/tasktui/cmd/tasktui@latest
+<span class="pr">❯</span> tasktui demo          <span class="cm"># pruébalo con tareas de ejemplo</span>
+<span class="pr">❯</span> tasktui               <span class="cm"># tus tareas, como Markdown en ~/.local/share/tasktui</span></pre>
+        <button class="copy" data-copy="#code-term" type="button">copiar</button>
+        <p>Sin servidor, cada proyecto es un archivo <code>.md</code> compatible con Obsidian Tasks.
+          Apunta la carpeta a tu vault y las ves también en Obsidian.</p>
+      </div>
+
+      <div role="tabpanel" id="p-docker" aria-labelledby="tab-docker" hidden>
+        <pre class="code" id="code-docker"><span class="pr">❯</span> git clone https://github.com/alfonsoHR98/tasktui.git &amp;&amp; cd tasktui
+<span class="pr">❯</span> cp .env.example .env    <span class="cm"># pon un API_TOKEN: openssl rand -hex 24</span>
+<span class="pr">❯</span> docker compose up -d --build
+<span class="pr">❯</span> tasktui server connect http://127.0.0.1:8787</pre>
+        <button class="copy" data-copy="#code-docker" type="button">copiar</button>
+        <p>Un contenedor con la API, la página web y el MCP; las tareas viven en un archivo SQLite
+          dentro de un volumen. Para usarlo fuera de casa, la guía explica HTTPS con Caddy,
+          Cloudflare Tunnel o Tailscale.</p>
+      </div>
+
+      <div role="tabpanel" id="p-bin" aria-labelledby="tab-bin" hidden>
+        <pre class="code" id="code-bin"><span class="pr">❯</span> git clone https://github.com/alfonsoHR98/tasktui.git &amp;&amp; cd tasktui
+<span class="pr">❯</span> make server
+<span class="pr">❯</span> API_TOKEN=$(openssl rand -hex 24) DATABASE_PATH=./tasktui.db ./tasktui-server</pre>
+        <button class="copy" data-copy="#code-bin" type="button">copiar</button>
+        <p>El servidor es un solo binario en Go puro, sin cgo: corre igual en un VPS, una Raspberry Pi o tu Mac.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="datos" data-section>
+    <h2>Tuyo de verdad</h2>
+    <p class="lead">Sin cuenta, sin nube ajena. Tus tareas son texto que puedes leer, respaldar y mover.</p>
+
+    <div class="two">
+      <figure class="win small">
+        <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">Finanzas.md</span></div>
+<pre class="code md"><span class="c-blue"># Finanzas</span>
+
+- [ ] Pagar la luz <span class="c-mauve">#casa</span> 🔺 🔁 every month 📅 2026-11-12 ⏰ 18:00 🆔 frlyy
+    <span class="cm">Recibo de CFE</span>
+    <span class="cm">- 2026-11-06: llamé, sigue pendiente</span>
+- [x] Enviar la factura de octubre ✅ 2026-11-11</pre>
+        <figcaption>En modo local, cada proyecto es un <code>.md</code> en formato Obsidian Tasks.</figcaption>
+      </figure>
+
+      <figure class="win small">
+        <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">claude</span></div>
+<pre class="code chat"><span class="pr">❯</span> ¿Qué tengo para hoy?
+
+<span class="c-mauve">●</span> <span class="cm">tasktui · list_tasks(view: "today")</span>
+
+Tienes 3 tareas. Una está vencida: <b>Renovar el
+dominio</b> (p1). Hoy tocan <b>Pagar la luz</b> a las
+18:00 y <b>Llamar al dentista</b> a las 12:30.</pre>
+        <figcaption>Con el servidor MCP, Claude usa las mismas reglas que la TUI. Conversación ilustrativa.</figcaption>
+      </figure>
+    </div>
+
+    <ul class="facts">
+      <li><b>Exporta cuando quieras.</b> <code>tasktui export</code> escribe todo a Markdown y <code>/api/export</code> lo entrega en JSON.</li>
+      <li><b>Una persona, un token.</b> Es una herramienta personal, no un servicio multiusuario.</li>
+      <li><b>Funciona sin internet.</b> En modo remoto ves la última copia y los cambios se rechazan con un aviso en vez de perderse.</li>
+    </ul>
+  </section>
+
+  <section id="atajos" data-section>
+    <h2>Hecho para el teclado</h2>
+    <p class="lead">Si usas vim, ya sabes moverte. Lo demás cabe en una línea.</p>
+    <dl class="keys">
+      <div><dt><kbd>j</kbd><kbd>k</kbd></dt><dd>moverse</dd></div>
+      <div><dt><kbd>h</kbd><kbd>l</kbd></dt><dd>barra lateral ↔ lista</dd></div>
+      <div><dt><kbd>a</kbd></dt><dd>añadir con captura rápida</dd></div>
+      <div><dt><kbd>x</kbd></dt><dd>completar o reabrir</dd></div>
+      <div><dt><kbd>e</kbd></dt><dd>editar con la misma sintaxis</dd></div>
+      <div><dt><kbd>s</kbd></dt><dd>fecha, hora y límite</dd></div>
+      <div><dt><kbd>i</kbd></dt><dd>descripción en tu <code>$EDITOR</code></dd></div>
+      <div><dt><kbd>n</kbd></dt><dd>nota con la fecha de hoy</dd></div>
+      <div><dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>prioridad</dd></div>
+      <div><dt><kbd>g</kbd><kbd>t</kbd></dt><dd>ir a Hoy (<kbd>gi</kbd> <kbd>gu</kbd> <kbd>ga</kbd>)</dd></div>
+      <div><dt><kbd>/</kbd></dt><dd>buscar</dd></div>
+      <div><dt><kbd>u</kbd></dt><dd>deshacer, hasta 50 pasos</dd></div>
+    </dl>
+    <div class="cta end">
+      <a class="btn primary" href="https://github.com/alfonsoHR98/tasktui">Ver el código en GitHub <span aria-hidden="true">→</span></a>
+      <a class="btn" href="https://github.com/alfonsoHR98/tasktui/blob/main/docs/uso.md">Leer la guía de uso</a>
+    </div>
+  </section>
+
+  <footer>
+    <p><span class="c-green">✓</span> tasktui · software libre bajo licencia <a href="https://github.com/alfonsoHR98/tasktui/blob/main/LICENSE">MIT</a></p>
+    <p>Hecho por <a href="https://github.com/alfonsoHR98">alfonsoHR98</a> · tipografías Departure Mono y JetBrains Mono (OFL)</p>
+  </footer>
+</main>
+
+<script src="app.js" defer></script>
+</body>
+</html>

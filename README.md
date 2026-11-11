@@ -43,7 +43,7 @@ Elige dónde vivirá tu servidor:
 | Opción | Ideal si… | Guía |
 |---|---|---|
 | **Docker + SQLite** | tienes un VPS, Raspberry Pi, NAS o tu Mac siempre encendida | [docs/docker.md](docs/docker.md) |
-| **Sin servidor** (archivos `.md`) | solo usas la terminal, sincronizas con iCloud/Obsidian | [docs/modos-y-recordatorios.md](docs/modos-y-recordatorios.md) |
+| **Sin servidor** (archivos `.md`) | solo usas la terminal, sincronizas con iCloud/Obsidian | [docs/modos.md](docs/modos.md) |
 
 ### Docker en tres comandos
 
@@ -58,7 +58,7 @@ casa necesitas HTTPS (la guía explica Caddy, Cloudflare Tunnel y Tailscale).
 
 ### Instala la TUI/CLI
 
-Requiere [Go](https://go.dev/dl/) 1.27 o superior (en macOS, además las herramientas de línea de comandos de Xcode: `xcode-select --install`).
+Requiere [Go](https://go.dev/dl/) 1.27 o superior.
 
 ```sh
 go install github.com/alfonsoHR98/tasktui/cmd/tasktui@latest   # o, desde el repo: make install
@@ -74,7 +74,6 @@ tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 - **Página web (PWA)**, servida por el mismo servidor, funciona sin conexión en lectura. → [web](docs/web.md)
 - **App de iPhone** (SwiftUI) con widget y avisos locales. → [iOS](docs/ios.md)
 - **Servidor MCP** para Claude y otras IAs. → [MCP](docs/mcp.md)
-- **Recordatorios de Apple** (macOS): espejo en una lista, captura con Siri. → [docs](docs/modos-y-recordatorios.md)
 - **Respaldo**: `tasktui export` a `.md`, y `/api/export` en JSON.
 
 ## Documentación
@@ -87,7 +86,7 @@ tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 | [docs/api.md](docs/api.md) | rutas de la API |
 | [docs/web.md](docs/web.md) | la página web / PWA |
 | [docs/ios.md](docs/ios.md) | la app de iPhone |
-| [docs/modos-y-recordatorios.md](docs/modos-y-recordatorios.md) | modo local, formato Markdown, Recordatorios |
+| [docs/modos.md](docs/modos.md) | modo local y formato Markdown |
 | [docs/desarrollo.md](docs/desarrollo.md) | estructura del código y pruebas |
 
 ## Seguridad
@@ -108,8 +107,7 @@ tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
   crear subtareas desde la TUI, reordenar, editar notas desde la TUI.
 - **Hecho:** notas por tarea (CLI `note`, se ven en el detalle), migración
   inicial desde Todoist.
-- **Hecho:** espejo hacia Recordatorios (`tasktui sync`).
-- **Hecho:** captura desde Recordatorios/Siri y sync periódico con launchd.
+- **Retirado:** el espejo con Recordatorios de Apple (`tasktui sync`).
 - **Hecho:** núcleo compartido entre la TUI y el servidor.
 - **Hecho:** servidor con API (SQLite).
 - **Hecho:** migración completa de Rust a Go (TUI, CLI, servidor y MCP); se retiró el Worker de Cloudflare.
@@ -121,8 +119,7 @@ tasktui add Pagar luz mañana 18:00 p1 +Finanzas          # o desde la CLI
 - **Siguiente:** avisos push en la página web; imagen de Docker publicada; otras bases (Postgres).
 - **Fase 3:** abrir la tarea en Obsidian,
   temas de color.
-- **Fase 4:** notificaciones en macOS/iPhone (puente opcional con Recordatorios
-  vía EventKit), publicación (`brew`, crates.io).
+- **Fase 4:** notificaciones en macOS/iPhone, publicación (`brew`).
 
 ## Licencia
 

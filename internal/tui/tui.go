@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/alfonsoHR98/tasktui/internal/core"
-	"github.com/alfonsoHR98/tasktui/internal/reminders"
 	"github.com/alfonsoHR98/tasktui/internal/store"
 )
 
@@ -258,7 +257,6 @@ func (m *model) mutate(f func(s store.Store) (string, string, error)) {
 		if sel != "" {
 			m.selID = sel
 		}
-		reminders.SyncInBackground()
 	}
 	m.refresh()
 }
@@ -519,7 +517,6 @@ func (m *model) onNormalKey(k tea.KeyMsg) tea.Cmd {
 			if err := m.store.Restore(snap); err != nil {
 				m.msg = "Error: " + err.Error()
 			} else {
-				reminders.SyncInBackground()
 				m.msg = "Deshecho"
 			}
 			m.refresh()

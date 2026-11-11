@@ -1,8 +1,6 @@
 # Desarrollo
 
-Go 1.27+. En macOS, la TUI incluye el espejo con Recordatorios, que usa cgo
-(Objective-C + EventKit): hacen falta las herramientas de línea de comandos de
-Xcode (`xcode-select --install`). El servidor **no** usa cgo (SQLite en Go puro).
+Go 1.27+. No hace falta cgo ni herramientas de Xcode (SQLite en Go puro).
 
 ```sh
 make test        # go vet + go test ./...
@@ -19,7 +17,6 @@ make docker      # construye la imagen
 | `internal/server` | API JSON, MCP y la página web (incrustada), con SQLite |
 | `internal/store` | Almacén de la TUI/CLI: archivos `.md` (`files.go`), servidor (`remote.go`) y `config.go` |
 | `internal/tui` | La interfaz (Bubble Tea) |
-| `internal/reminders` | Espejo con Recordatorios: plan puro (`reminders.go`) y puente EventKit (`eventkit.m`) |
 | `cmd/tasktui` | La CLI (cobra); sin argumentos abre la TUI |
 | `cmd/tasktui-server` | El servidor |
 

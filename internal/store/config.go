@@ -12,7 +12,6 @@ import (
 // Configuración: ~/.config/tasktui/config.toml
 //
 //	data_dir = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MiVault/Tareas"
-//	recordatorios = true   # espejo automático hacia Recordatorios
 //	remoto = true          # usar el servidor de servidor.toml (por defecto, si existe)
 //
 // El servidor va aparte, en ~/.config/tasktui/servidor.toml (permisos 600, porque
@@ -26,9 +25,8 @@ import (
 //   - TASKTUI_SERVER + TASKTUI_TOKEN: modo remoto con ese servidor.
 
 type config struct {
-	DataDir       *string `toml:"data_dir,omitempty"`
-	Recordatorios *bool   `toml:"recordatorios,omitempty"`
-	Remoto        *bool   `toml:"remoto,omitempty"`
+	DataDir *string `toml:"data_dir,omitempty"`
+	Remoto  *bool   `toml:"remoto,omitempty"`
 }
 
 // Server es el servidor de tasktui al que conectarse.
@@ -111,22 +109,6 @@ func SetDataDir(dir string) (string, error) {
 	}
 	c.DataDir = &dir
 	return expand(dir), saveConfig(c)
-}
-
-// RemindersEnabled dice si el espejo automático hacia Recordatorios está activo.
-func RemindersEnabled() bool {
-	c, err := loadConfig()
-	return err == nil && c.Recordatorios != nil && *c.Recordatorios
-}
-
-// SetReminders activa o desactiva el espejo automático.
-func SetReminders(on bool) error {
-	c, err := loadConfig()
-	if err != nil {
-		return err
-	}
-	c.Recordatorios = &on
-	return saveConfig(c)
 }
 
 // ServerPath es la ruta de servidor.toml.

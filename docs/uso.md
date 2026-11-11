@@ -4,7 +4,7 @@
 
 | Campo | Para qué |
 |---|---|
-| Fecha (+ hora opcional) | cuándo piensas hacerla; con hora, Recordatorios avisa a esa hora |
+| Fecha (+ hora opcional) | cuándo piensas hacerla (con hora opcional) |
 | Fecha límite | cuándo **debe** estar hecha; aparece en «Hoy» cuando llega y en rojo si pasó |
 | Descripción | texto libre de varias líneas (contexto, enlaces) |
 | Notas | comentarios de seguimiento, cada uno con su fecha |
@@ -74,7 +74,6 @@ tasktui describe frlyy Texto nuevo         # sin texto abre $EDITOR
 tasktui note frlyy Llamaron, sigue pendiente
 tasktui rm frlyy
 tasktui projects | labels
-tasktui sync                               # espejo con Recordatorios
 tasktui list --json                        # cualquier comando acepta --json
 ```
 

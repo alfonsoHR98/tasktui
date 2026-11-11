@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alfonsoHR98/tasktui/internal/core"
-	"github.com/alfonsoHR98/tasktui/internal/reminders"
 	"github.com/alfonsoHR98/tasktui/internal/store"
 	"github.com/alfonsoHR98/tasktui/internal/tui"
 )
@@ -38,8 +37,6 @@ func printJSONCompact(v any) {
 type app struct {
 	json  bool
 	store store.Store
-	// mutating indica que tras el comando hay que sincronizar con Recordatorios.
-	mutating bool
 }
 
 func (a *app) open() (store.Store, error) {
@@ -73,17 +70,12 @@ func newRoot() *cobra.Command {
 			}
 			return tui.Run(s)
 		},
-		PersistentPostRun: func(*cobra.Command, []string) {
-			if a.mutating {
-				reminders.SyncInBackground()
-			}
-		},
 	}
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "Salida en JSON (para scripts y para Claude)")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
 		cmdAdd(a), cmdList(a), cmdShow(a), cmdDone(a), cmdEdit(a), cmdDescribe(a), cmdNote(a), cmdRm(a),
-		cmdSync(a), cmdProjects(a), cmdLabels(a), cmdDir(), cmdServer(a), cmdExport(a),
+		cmdProjects(a), cmdLabels(a), cmdDir(), cmdServer(a), cmdExport(a),
 	)
 	return root
 }
@@ -111,7 +103,6 @@ func cmdAdd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.mutating = true
 			saved, err := findTask(s, id)
 			if err != nil {
 				return err
@@ -239,7 +230,6 @@ func cmdDone(a *app) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				a.mutating = true
 				if done {
 					fmt.Println("✓ completada", id)
 				} else {
@@ -276,7 +266,6 @@ func cmdEdit(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.mutating = true
 			t, err := findTask(s, id)
 			if err != nil {
 				return err
@@ -322,7 +311,6 @@ func cmdDescribe(a *app) *cobra.Command {
 			if err := s.Update(id, func(t *core.Task) { t.Description = strings.TrimSpace(desc) }); err != nil {
 				return err
 			}
-			a.mutating = true
 			t, err := findTask(s, id)
 			if err != nil {
 				return err
@@ -350,7 +338,6 @@ func cmdNote(a *app) *cobra.Command {
 			if err := s.AddNote(args[0], strings.Join(args[1:], " ")); err != nil {
 				return err
 			}
-			a.mutating = true
 			t, err := findTask(s, args[0])
 			if err != nil {
 				return err
@@ -379,90 +366,11 @@ func cmdRm(a *app) *cobra.Command {
 				if err := s.Delete(id); err != nil {
 					return err
 				}
-				a.mutating = true
 				fmt.Println("Eliminada", id)
 			}
 			return nil
 		},
 	}
-}
-
-func cmdSync(a *app) *cobra.Command {
-	var auto, agent string
-	var every int
-	var quiet bool
-	c := &cobra.Command{
-		Use:   "sync",
-		Short: "Espejo con la app Recordatorios (macOS): tasktui sync [--auto on|off] [--agent on|off]",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			for _, v := range []string{auto, agent} {
-				if v != "" && v != "on" && v != "off" {
-					return errors.New("El valor debe ser on u off")
-				}
-			}
-			if agent != "" {
-				path, err := reminders.SetAgent(agent == "on", every)
-				if err != nil {
-					return err
-				}
-				if !quiet {
-					if agent == "on" {
-						fmt.Printf("Agente instalado: sincroniza cada %d min (%s)\n", every, path)
-					} else {
-						fmt.Println("Agente quitado")
-					}
-				}
-				if agent == "off" {
-					return nil
-				}
-			}
-			if auto != "" {
-				if err := store.SetReminders(auto == "on"); err != nil {
-					return err
-				}
-				if !quiet {
-					if auto == "on" {
-						fmt.Println("Sincronización automática activada")
-					} else {
-						fmt.Println("Sincronización automática desactivada")
-					}
-				}
-			}
-			s, err := a.open()
-			if err != nil {
-				return err
-			}
-			r, err := reminders.Sync(s)
-			if err != nil {
-				return err
-			}
-			switch {
-			case a.json:
-				printJSONCompact(r)
-			case !quiet:
-				for _, id := range r.Completed {
-					fmt.Println("Completada desde Recordatorios:", id)
-				}
-				for _, id := range r.Imported {
-					if t, err := findTask(s, id); err == nil {
-						fmt.Println("Importada desde Recordatorios:", taskPlain(t, true))
-					}
-				}
-				fmt.Printf("Recordatorios («%s»): %d nuevos, %d actualizados, %d quitados\n", reminders.List, r.Created, r.Updated, r.Removed)
-			}
-			return nil
-		},
-	}
-	c.Flags().StringVar(&auto, "auto", "", "Sincronizar en segundo plano tras cada cambio (on) o dejar de hacerlo (off)")
-	c.Flags().StringVar(&agent, "agent", "", "Sincronizar cada N minutos con launchd (on), o quitarlo (off)")
-	c.Flags().StringVar(&agent, "agente", "", "")
-	_ = c.Flags().MarkHidden("agente")
-	c.Flags().IntVar(&every, "every", 10, "Minutos entre sincronizaciones del agente")
-	c.Flags().IntVar(&every, "cada", 10, "")
-	_ = c.Flags().MarkHidden("cada")
-	c.Flags().BoolVarP(&quiet, "quiet", "q", false, "Sin salida (para ejecutarlo en segundo plano)")
-	return c
 }
 
 func cmdProjects(a *app) *cobra.Command {

@@ -1,4 +1,4 @@
-# Modos de almacenamiento, formato Markdown y Recordatorios de Apple
+# Modos de almacenamiento y formato Markdown
 
 Dos modos, con la misma TUI y la misma CLI:
 
@@ -53,28 +53,3 @@ La descripción y las notas se mueven y se borran junto con su tarea.
   referirse a ella (también las que escribas desde Obsidian).
 - Al completar una tarea que se repite, la pendiente avanza de fecha y conserva
   su id; la ocurrencia hecha queda debajo con `✅ fecha` (igual que Obsidian Tasks).
-
-## Recordatorios de Apple (avisos en Mac e iPhone)
-
-```sh
-tasktui sync              # sincroniza una vez
-tasktui sync --auto on    # además, sincroniza en segundo plano tras cada cambio
-tasktui sync --agente on  # y cada 10 min con launchd (--cada N para cambiarlo)
-```
-
-- Crea la lista **tasktui** en Recordatorios con un recordatorio por cada tarea
-  pendiente **con fecha** (título, fecha de todo el día, prioridad, proyecto y
-  notas). Te avisa a la hora de «Notificación de hoy» de Recordatorios.
-- Los `.md` mandan: si cambias un recordatorio de tasktui, el siguiente `sync`
-  lo deja como la tarea. Dos excepciones:
-  - si lo **completas** en Recordatorios, la tarea se completa (si se repite, avanza);
-  - si **creas** un recordatorio en la lista tasktui (a mano o con Siri), se
-    importa como tarea. El título acepta la captura rápida
-    (`Comprar leche +Casa #super p1`); la fecha, prioridad y notas del
-    recordatorio se respetan. Si no tiene fecha, pasa a tasktui y sale de
-    Recordatorios (ahí solo viven las tareas con fecha).
-- La primera vez macOS pide permiso de acceso a Recordatorios (el agente de
-  launchd tiene su propio permiso; el registro queda en
-  `~/Library/Logs/tasktui-sync.log`).
-- La relación tarea ↔ recordatorio vive en `~/.config/tasktui/recordatorios.json`.
-

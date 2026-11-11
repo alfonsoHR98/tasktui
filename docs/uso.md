@@ -33,9 +33,23 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 
 ## Atajos (TUI)
 
+![La TUI en la vista Hoy](img/hoy.png)
+
+Tres paneles: vistas, proyectos y etiquetas a la izquierda; la lista al centro;
+el detalle a la derecha (abajo, si la terminal es angosta). El panel con foco
+lleva el marco verde. Al pie de la barra lateral, `hoy 2/8` es tu avance del
+día: hechas hoy frente a todo lo que tocaba hoy.
+
 En la lista, cada columna va alineada: texto (con etiquetas), fecha y hora,
-`🎯` fecha límite, proyecto e íconos (`¶` tiene descripción, `✎2` tiene 2
-notas, `↻` se repite). En terminales anchas el detalle va a la derecha.
+`⚑` fecha límite, proyecto e íconos (`¶` tiene descripción, `✎2` tiene 2
+notas, `↻` se repite). El círculo toma el color de la prioridad y `◉` marca p1.
+
+La barra de abajo dice en qué modo estás (`NORMAL`, `ESCRIBIR`, `BUSCAR`,
+`ELIMINAR`), los atajos principales y, a la derecha, dónde viven tus tareas
+(`▤ local`, `☁ remoto` o `⚠ sin conexión`).
+
+¿Solo quieres verla? `tasktui demo` la abre con tareas de ejemplo en una carpeta
+temporal, sin tocar las tuyas.
 
 | Tecla | Acción |
 |---|---|
@@ -58,6 +72,21 @@ notas, `↻` se repite). En terminales anchas el detalle va a la derecha.
 | `r` | recargar (también se recarga solo cada 30 s sin actividad) |
 | `?` · `q` | ayuda · salir |
 
+## Tema de color
+
+Por defecto la TUI usa **Aurora** en color verdadero (verde de acento sobre
+negro). Si prefieres que siga los 16 colores de tu terminal, y con ellos el tema
+que ya tengas puesto, usa `ansi`:
+
+```sh
+TASKTUI_THEME=ansi tasktui                       # solo esta vez
+echo 'theme = "ansi"' >> ~/.config/tasktui/config.toml   # siempre
+```
+
+`NO_COLOR=1` quita todos los colores.
+
+![Captura rápida con vista previa](img/captura.png)
+
 ## CLI (scripts y Claude)
 
 ```sh
@@ -76,6 +105,7 @@ tasktui rm frlyy
 tasktui projects | labels
 tasktui projects rm <proyecto> [--yes]   # elimina el proyecto y sus tareas
 tasktui list --json                        # cualquier comando acepta --json
+tasktui demo                               # la TUI con tareas de ejemplo
 ```
 
 Los comandos están en inglés; los nombres anteriores en español (`servidor`,

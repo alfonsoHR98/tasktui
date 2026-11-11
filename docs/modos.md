@@ -31,6 +31,20 @@ tasktui dir "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/<TuVault>/T
 Eso se guarda en `~/.config/tasktui/config.toml`. La variable `TASKTUI_DIR`
 tiene prioridad (útil para pruebas).
 
+### Archivos de configuración
+
+| Archivo | Contenido |
+|---|---|
+| `~/.config/tasktui/config.toml` | `data_dir` (carpeta del modo local), `remoto` (`true`/`false`) y `theme` (`"aurora"` o `"ansi"`) |
+| `~/.config/tasktui/servidor.toml` | `url` y `token` del servidor (permisos 600) |
+
+| Variable | Efecto |
+|---|---|
+| `TASKTUI_DIR` | fuerza el modo local en esa carpeta |
+| `TASKTUI_SERVER` + `TASKTUI_TOKEN` | fuerzan el modo remoto |
+| `TASKTUI_THEME` | tema de color de la TUI |
+| `EDITOR` | editor para la descripción (`i`) |
+
 ### Formato
 
 | Concepto | En disco |

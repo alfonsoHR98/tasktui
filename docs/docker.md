@@ -129,5 +129,5 @@ API_TOKEN=… DATABASE_PATH=./tasktui.db ./tasktui-server
 ## Y si quiero Postgres u otra base
 
 Hoy solo hay SQLite (una persona, un archivo: no necesita más). El acceso a
-datos está aislado en `crates/tasktui-server/src/db.rs`, así que añadir otra
+datos está aislado en `internal/server/db.go`, así que añadir otra
 base es cambiar ese archivo. Ideas y pull requests, bienvenidos.

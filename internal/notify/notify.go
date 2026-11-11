@@ -5,6 +5,7 @@ package notify
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -131,10 +132,24 @@ func Run(ctx context.Context, s store.Store, every time.Duration, log func(strin
 // Usa una notificación nativa con botones (terminal-notifier); si no está instalado,
 // un diálogo fijo de macOS.
 func Alert(d Due) string {
-	if bin, err := exec.LookPath("terminal-notifier"); err == nil {
+	if bin := findNotifier(); bin != "" {
 		return alertNative(bin, d)
 	}
 	return alertDialog(d)
+}
+
+// findNotifier busca terminal-notifier. launchd arranca con un PATH mínimo que no
+// incluye Homebrew, así que también se prueban sus rutas habituales.
+func findNotifier() string {
+	if bin, err := exec.LookPath("terminal-notifier"); err == nil {
+		return bin
+	}
+	for _, p := range []string{"/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 // alertNative envía una notificación de macOS con botones y espera la respuesta.

@@ -127,8 +127,39 @@ func Run(ctx context.Context, s store.Store, every time.Duration, log func(strin
 	}
 }
 
-// Alert muestra un diálogo fijo y devuelve el botón pulsado ("" si falla).
+// Alert muestra el aviso y devuelve el botón pulsado ("" si se cierra o falla).
+// Usa una notificación nativa con botones (terminal-notifier); si no está instalado,
+// un diálogo fijo de macOS.
 func Alert(d Due) string {
+	if bin, err := exec.LookPath("terminal-notifier"); err == nil {
+		return alertNative(bin, d)
+	}
+	return alertDialog(d)
+}
+
+// alertNative envía una notificación de macOS con botones y espera la respuesta.
+// Para que se quede fija hay que poner terminal-notifier en «Alertas» en
+// Ajustes del Sistema → Notificaciones.
+func alertNative(bin string, d Due) string {
+	msg := d.Proj
+	if msg == "" {
+		msg = "tasktui"
+	}
+	actions := "Completar,Posponer 10 min"
+	if d.ID == "" {
+		actions = "Posponer 10 min"
+	}
+	out, _ := exec.Command(bin, "-title", "Vence: "+d.Text, "-message", msg+" · "+d.When.Format("15:04"),
+		"-sound", "default", "-group", "tasktui-"+d.Key, "-action", actions).Output()
+	s := strings.TrimSpace(string(out))
+	if s == "Completar" || s == "Posponer 10 min" {
+		return s
+	}
+	return ""
+}
+
+// alertDialog es el respaldo: un diálogo fijo con los botones.
+func alertDialog(d Due) string {
 	buttons := `{"Cerrar", "Posponer 10 min", "Completar"}`
 	if d.ID == "" {
 		buttons = `{"Cerrar", "Posponer 10 min"}`

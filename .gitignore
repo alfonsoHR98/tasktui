@@ -1,12 +1,10 @@
-target/
 .DS_Store
-.wrangler/
-node_modules/
-.dev.vars
 
 # iOS
 ios/*.xcodeproj
 ios/build/
 xcuserdata/
 .env
-crates/tasktui-worker/wrangler.jsonc
+# Go
+/tasktui
+/tasktui-server

@@ -1,7 +1,5 @@
-target/
 .git/
 ios/
-**/node_modules/
-**/.wrangler/
-**/build/
+docs/
 .env
+*.md

@@ -1,6 +1,6 @@
 # Página web (celular y cualquier navegador)
 
-El mismo Worker sirve una página en la raíz del dominio (por ejemplo
+El mismo servidor sirve una página en la raíz del dominio (por ejemplo
 `https://tareas.tu-dominio.com`). La primera vez pide el token del servidor y lo
 guarda solo en ese navegador; «Cerrar sesión» en el menú `⋯` lo borra.
 
@@ -16,7 +16,5 @@ guarda solo en ese navegador; «Cerrar sesión» en el menú `⋯` lo borra.
   Se abre como app, sin barra del navegador.
 
 No tiene paso de compilación: son archivos estáticos en
-`crates/tasktui-worker/web/` (HTML, CSS y JavaScript sin dependencias) que se
-publican con `wrangler deploy` (`assets` en `wrangler.jsonc`; `/api/*` pasa
-primero por el Worker). Las cabeceras de seguridad (CSP) están en `web/_headers`.
-
+`internal/server/web/` (HTML, CSS y JavaScript sin dependencias) que el servidor
+incrusta en su binario. Las cabeceras de seguridad (CSP) están en `internal/server/server.go`.

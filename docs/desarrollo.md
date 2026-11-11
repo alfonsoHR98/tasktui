@@ -1,45 +1,43 @@
 # Desarrollo
 
-Workspace de Cargo con cuatro crates (el Worker solo compila a wasm y `cargo test` no lo incluye):
-
-**`crates/tasktui-core`**: el núcleo. No usa reloj, archivos ni red (quien
-llama pasa la fecha de hoy), así que compila igual a nativo que a wasm para el
-servidor.
-
-| Archivo | Qué hace |
-|---|---|
-| `model.rs` | `Task`, `Recurrence` |
-| `quick.rs` | captura rápida en español |
-| `dates.rs` | fechas en español («hoy», «vie», «15 nov») |
-| `markdown.rs` | leer/escribir una línea en formato Obsidian Tasks |
-| `views.rs` | vistas Inbox/Hoy/Próximos/Todas/Proyecto/Etiqueta |
-| `dto.rs` | la tarea en JSON: contrato de `--json` y de la API |
-| `mcp.rs` | herramientas y protocolo del servidor MCP (sin E/S) |
-
-**`crates/tasktui-worker`**: el servidor (API sobre Cloudflare Workers + D1, ver arriba)
-y la página web en `web/` (`app.js` cliente de la API, `sw.js` para abrir sin conexión).
-
-**`crates/tasktui-server`**: el mismo servidor como binario nativo con SQLite (axum + rusqlite), para Docker. Incrusta la web y comparte con el Worker el MCP (`tasktui_core::mcp`). Las rutas están duplicadas respecto al Worker (`api.rs` ↔ `lib.rs`): si cambias una, cambia la otra.
-
-**`crates/tasktui`**: la TUI y la CLI.
-
-| Archivo | Qué hace |
-|---|---|
-| `store.rs` | elige el modo (local o remoto) con una sola interfaz |
-| `files.rs` | modo local: carpeta de `.md` (cargar, añadir, editar, mover, completar, deshacer, notas) y exportar |
-| `remote.rs` | modo remoto: cliente HTTP del servidor, caché sin conexión y deshacer |
-| `tui.rs` | interfaz ratatui |
-| `reminders.rs` | espejo con Recordatorios (EventKit, solo macOS) y agente de launchd |
-| `config.rs` | `~/.config/tasktui/config.toml` |
-| `main.rs` | CLI (clap) |
+Go 1.27+. En macOS, la TUI incluye el espejo con Recordatorios, que usa cgo
+(Objective-C + EventKit): hacen falta las herramientas de línea de comandos de
+Xcode (`xcode-select --install`). El servidor **no** usa cgo (SQLite en Go puro).
 
 ```sh
-cargo test                                              # todas las pruebas
-TASKTUI_SERVER=http://localhost:8787 TASKTUI_TOKEN=… cargo test -p tasktui remoto   # integración con un servidor
-cargo build -p tasktui-core --target wasm32-unknown-unknown   # el núcleo compila a wasm
+make test        # go vet + go test ./...
+make install     # instala tasktui en ~/go/bin (o donde diga GOBIN)
+make server      # compila ./tasktui-server
+make docker      # construye la imagen
 ```
 
+## Estructura
 
-Las pruebas del servidor Docker (`cargo test -p tasktui-server`) cubren el ciclo
-de una tarea, las repeticiones y los errores. El Worker se prueba con
-`wrangler dev` (ver [cloudflare.md](cloudflare.md)).
+| Carpeta | Qué hace |
+|---|---|
+| `internal/core` | El núcleo, sin reloj, archivos ni red (quien llama pasa «hoy») |
+| `internal/server` | API JSON, MCP y la página web (incrustada), con SQLite |
+| `internal/store` | Almacén de la TUI/CLI: archivos `.md` (`files.go`), servidor (`remote.go`) y `config.go` |
+| `internal/tui` | La interfaz (Bubble Tea) |
+| `internal/reminders` | Espejo con Recordatorios: plan puro (`reminders.go`) y puente EventKit (`eventkit.m`) |
+| `cmd/tasktui` | La CLI (cobra); sin argumentos abre la TUI |
+| `cmd/tasktui-server` | El servidor |
+
+### `internal/core`
+
+| Archivo | Qué hace |
+|---|---|
+| `model.go` | `Task`, `Recurrence`, completar tareas que se repiten |
+| `quick.go` | captura rápida en español |
+| `dates.go`, `date.go` | fechas en español («hoy», «vie», «15 nov») y aritmética segura |
+| `markdown.go` | leer/escribir una línea en formato Obsidian Tasks |
+| `views.go` | vistas Inbox/Hoy/Próximos/Todas/Proyecto/Etiqueta |
+| `dto.go` | la tarea en JSON: contrato de `--json` y de la API |
+| `mcp.go` | herramientas y protocolo del servidor MCP (sin E/S) |
+
+La captura rápida se prueba con miles de combinaciones raras de texto y números
+enormes para que ninguna entrada pueda tumbar el programa
+(`TestSinPanico` en `internal/core/core_test.go`).
+
+Las pruebas del servidor levantan un servidor HTTP real con una base temporal;
+las de la TUI mandan teclas al modelo y revisan la pantalla.

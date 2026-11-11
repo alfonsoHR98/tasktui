@@ -6,15 +6,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
         with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude tasktui-worker
-      - run: cargo check -p tasktui-worker --target wasm32-unknown-unknown
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
 
   docker:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 # Servidor MCP (para Claude y otras IAs)
 
-El servidor (Worker o Docker) expone `POST /mcp/<MCP_SECRET>` (MCP por HTTP,
+El servidor expone `POST /mcp/<MCP_SECRET>` (MCP por HTTP,
 solo JSON). Así una IA puede consultar y manejar tus tareas con las mismas
 reglas que la TUI (captura rápida, repeticiones…).
 
@@ -15,7 +15,6 @@ y `list_labels`.
 
 ## Activarlo
 
-- **Cloudflare:** `npx wrangler secret put MCP_SECRET` y `npx wrangler deploy`.
 - **Docker:** pon `MCP_SECRET=…` en `.env` y `docker compose up -d`.
 
 Sin `MCP_SECRET`, el MCP está apagado (la ruta responde 404).

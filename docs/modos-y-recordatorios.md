@@ -3,7 +3,7 @@
 Dos modos, con la misma TUI y la misma CLI:
 
 - **Remoto** (recomendado si quieres usarlo desde varios lugares): las tareas
-  viven en tu servidor (ver [docker.md](docker.md) o [cloudflare.md](cloudflare.md)).
+  viven en tu servidor (ver [docker.md](docker.md)).
 - **Local**: una carpeta de archivos `.md`.
 
 ```sh

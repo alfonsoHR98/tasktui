@@ -1,9 +1,8 @@
 # Servidor autoalojado con Docker (SQLite)
 
 Un solo contenedor con la API, la página web (PWA) y el MCP. Las tareas viven
-en un archivo SQLite dentro de un volumen. Es la misma API que la del Worker
-de Cloudflare, así que la TUI, la app de iPhone y la web funcionan igual con
-cualquiera de los dos.
+en un archivo SQLite dentro de un volumen. Es un solo binario en Go (sin cgo),
+y la imagen pesa unos 30 MB. La TUI, la app de iPhone y la web usan su API.
 
 ## Requisitos
 
@@ -78,7 +77,7 @@ Con `MCP_SECRET` definido, el servidor atiende `POST /mcp/<MCP_SECRET>`. Mira
 La base está en el volumen `tasktui-data` (`/data/tasktui.db`).
 
 ```sh
-# Respaldo en JSON desde la API (sirve también para migrar a Cloudflare)
+# Respaldo en JSON desde la API
 curl -H "Authorization: Bearer $API_TOKEN" http://127.0.0.1:8787/api/export > respaldo.json
 
 # O respaldo en .md (Obsidian Tasks) con la CLI
@@ -91,7 +90,7 @@ docker run --rm -v tasktui_tasktui-data:/data -v "$PWD":/out alpine cp /data/tas
 (El nombre del volumen lleva el prefijo del proyecto de compose; míralo con
 `docker volume ls`.)
 
-### Pasar de un servidor a otro (Cloudflare ⇄ Docker)
+### Pasar de un servidor a otro
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN_ORIGEN" https://origen/api/export > respaldo.json
@@ -99,7 +98,7 @@ curl -H "Authorization: Bearer $TOKEN_DESTINO" -X POST https://destino/api/impor
      -H 'Content-Type: application/json' --data @respaldo.json
 ```
 
-Conserva los ids. El esquema SQLite es el mismo que el de D1.
+Conserva los ids.
 
 ## Actualizar
 
@@ -123,8 +122,8 @@ Las migraciones de la base se aplican solas al arrancar.
 ## Sin Docker
 
 ```sh
-cargo build --release -p tasktui-server
-API_TOKEN=… DATABASE_PATH=./tasktui.db ./target/release/tasktui-server
+go build -o tasktui-server ./cmd/tasktui-server
+API_TOKEN=… DATABASE_PATH=./tasktui.db ./tasktui-server
 ```
 
 ## Y si quiero Postgres u otra base

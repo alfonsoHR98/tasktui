@@ -1,6 +1,6 @@
 # API
 
-La misma API en el Worker de Cloudflare y en el servidor Docker.
+La API del servidor (`tasktui-server`).
 
 Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
 

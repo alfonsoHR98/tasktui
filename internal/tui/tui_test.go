@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/alfonsoHR98/tasktui/internal/core"
 	"github.com/alfonsoHR98/tasktui/internal/store"
@@ -157,4 +159,43 @@ func TestEliminarProyectoDesdePanel(t *testing.T) {
 	if len(m.store.Projects()) != 2 {
 		t.Error("deshacer debía devolver el proyecto")
 	}
+}
+
+// TestCapturas escribe pantallas de ejemplo con color (ANSI) en la carpeta
+// TT_SHOT, para las imágenes de la documentación: ver scripts/capturas.sh.
+func TestCapturas(t *testing.T) {
+	dir := os.Getenv("TT_SHOT")
+	if dir == "" {
+		t.Skip("define TT_SHOT=<carpeta> para generar las capturas")
+	}
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	applyTheme(os.Getenv("TASKTUI_THEME"))
+	shot := func(name string, w, h int, keys ...string) {
+		s, err := store.OpenFiles(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SeedDemo(s, core.Today()); err != nil {
+			t.Fatal(err)
+		}
+		m := newModel(s)
+		m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+		for _, k := range keys {
+			if len([]rune(k)) > 1 && k != "enter" && k != "esc" && k != "tab" && k != "space" {
+				typeText(m, k)
+			} else {
+				key(m, k)
+			}
+		}
+		if err := os.WriteFile(dir+"/"+name+".ansi", []byte(m.View()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shot("hoy", 150, 34)
+	shot("captura", 150, 34, "a", "Mandar el reporte viernes 9:00 p1 +Trabajo #cliente cada mes")
+	shot("ayuda", 150, 34, "?")
+	shot("todas", 150, 34, "g", "a", "j", "j")
+	shot("estrecha", 84, 30, "j")
+	shot("vacia", 150, 34, "/", "zzz", "enter")
+	shot("lateral", 150, 34, "h", "j", "j", "j", "j")
 }

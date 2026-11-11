@@ -100,6 +100,7 @@ type descMsg struct {
 
 // Run abre la TUI.
 func Run(s store.Store) error {
+	applyTheme(store.Theme())
 	m := newModel(s)
 	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err

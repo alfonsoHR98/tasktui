@@ -67,42 +67,112 @@ func (m *model) View() string {
 
 // ---------- barra lateral ----------
 
+// sideIconColor da a cada vista su color en la barra lateral.
+func sideIconColor(v core.View) lipgloss.Color {
+	switch v.Kind {
+	case core.ViewInbox:
+		return blueC
+	case core.ViewToday:
+		return greenC
+	case core.ViewUpcoming:
+		return cyanC
+	case core.ViewLabel:
+		return magentaC
+	case core.ViewProject:
+		return yellowC
+	}
+	return grayC
+}
+
 func (m *model) drawSide(w, h int) []string {
 	inner := w - 2
 	visible := h - 2
-	off := scrollFor(m.sideIdx, 0, visible)
-	var lines []string
 	focused := m.focus == focusSide
-	for i := off; i < len(m.side) && len(lines) < visible; i++ {
-		it := m.side[i]
+	var lines []string
+	selLine := 0
+	for i, it := range m.side {
 		if it.kind == sideHeader {
-			lines = append(lines, st(" "+it.label, dimC, true, false, false))
+			if len(lines) > 0 {
+				lines = append(lines, "")
+			}
+			lines = append(lines, st("  "+it.label, dimC, true, false, false))
 			continue
 		}
 		count := ""
 		if it.count > 0 {
 			count = fmt.Sprint(it.count)
 		}
-		label := " " + it.label
-		pad := max(inner-runewidth.StringWidth(label)-runewidth.StringWidth(count)-2, 0)
+		icon, name, _ := strings.Cut(it.label, " ")
+		name = truncate(name, max(inner-6-runewidth.StringWidth(count), 4))
+		pad := strings.Repeat(" ", max(inner-4-runewidth.StringWidth(icon)-runewidth.StringWidth(name)-runewidth.StringWidth(count), 1))
 		sel := i == m.sideIdx
+		bg := sel && focused
+		if sel {
+			selLine = len(lines)
+		}
+		mark, nameC, countC := plain(" ", false), lipgloss.Color(""), dimC
 		switch {
-		case sel && focused:
-			lines = append(lines, fitBG(st(label+strings.Repeat(" ", pad)+count, accent, true, false, true), inner, true))
+		case bg:
+			mark, nameC, countC = st("▌", accent, false, false, true), "", grayC
 		case sel:
-			lines = append(lines, st(label+strings.Repeat(" ", pad), accent, false, false, false)+st(count, dimC, false, false, false))
-		default:
-			lines = append(lines, plain(label+strings.Repeat(" ", pad), false)+st(count, dimC, false, false, false))
+			mark, nameC = st("▌", borderC, false, false, false), accent
 		}
+		line := mark + st(icon+" ", sideIconColor(it.view), false, false, bg) + st(name, nameC, sel, false, bg) +
+			plain(pad, bg) + st(count, countC, false, false, bg) + plain(" ", bg)
+		lines = append(lines, fitBG(line, inner, bg))
 	}
-	title := " tasktui "
+	// Pie: avance del día (hechas hoy frente a lo que toca hoy).
+	foot := m.todayProgress(inner)
+	room := visible
+	if len(foot) > 0 && visible >= len(lines)+len(foot)+1 {
+		room = visible - len(foot)
+	} else {
+		foot = nil
+	}
+	off := scrollFor(selLine, 0, room)
+	if off > 0 && lines[off] == "" {
+		off++
+	}
+	shown := lines[off:min(off+room, len(lines))]
+	if foot != nil {
+		shown = append(append([]string(nil), shown...), make([]string, room-len(shown))...)
+		shown = append(shown, foot...)
+	}
+	title := "tasktui"
 	if m.store.Dir() == "" {
-		title = " tasktui ☁ "
+		title = "tasktui ☁"
 		if m.store.Notice() != "" {
-			title = " tasktui ⚠ "
+			title = "tasktui ⚠"
 		}
 	}
-	return box(title, w, h, lines, focused)
+	return box(title, w, h, shown, focused)
+}
+
+// todayProgress dibuja la barra de avance de hoy; nil si hoy no hay nada.
+func (m *model) todayProgress(w int) []string {
+	done, open := 0, 0
+	for _, e := range m.store.Tasks() {
+		t := e.Task
+		switch {
+		case t.Done && t.DoneDate != nil && t.DoneDate.Equal(m.today):
+			done++
+		case !t.Done && t.Due != nil && !t.Due.After(m.today):
+			open++
+		}
+	}
+	total := done + open
+	if total == 0 || w < 16 {
+		return nil
+	}
+	tag := fmt.Sprintf("%d/%d", done, total)
+	barW := w - 4
+	fill := done * barW / total
+	bar := st(strings.Repeat("━", fill), accent, false, false, false) + st(strings.Repeat("━", barW-fill), borderC, false, false, false)
+	head := st("  hoy", dimC, true, false, false)
+	return []string{
+		head + strings.Repeat(" ", max(w-2-width(head)-len(tag), 1)) + st(tag, grayC, false, false, false),
+		"  " + bar,
+	}
 }
 
 // scrollFor mantiene el elemento sel visible en una ventana de `visible` filas.
@@ -145,17 +215,14 @@ func deadlineText(s string, d, today core.Date, sel bool) string {
 }
 
 func (m *model) drawList(w, h int) []string {
-	title := fmt.Sprintf(" %s · %d ", m.view.Title(), len(m.taskRows))
+	title := fmt.Sprintf("%s · %d", m.view.Title(), len(m.taskRows))
 	if m.query != "" {
-		title += fmt.Sprintf("· /%s ", m.query)
+		title += " · /" + m.query
 	}
 	focused := m.focus == focusList
+	inner := w - 2
 	if len(m.taskRows) == 0 {
-		msg := "  Nada pendiente por aquí ✨   (a = añadir tarea)"
-		if m.query != "" {
-			msg = "  Sin resultados   (Esc = limpiar búsqueda)"
-		}
-		return box(title, w, h, []string{"", st(msg, dimC, false, false, false)}, focused)
+		return box(title, w, h, m.emptyList(inner, h-2), focused)
 	}
 	showProject := m.view.Kind != core.ViewProject && m.view.Kind != core.ViewInbox && m.view.Kind != core.ViewAll
 	today := m.today
@@ -178,7 +245,7 @@ func (m *model) drawList(w, h int) []string {
 			whenW = max(whenW, n)
 		}
 		if !t.Done && t.Deadline != nil {
-			dlW = max(dlW, runewidth.StringWidth(core.Rel(*t.Deadline, today))+3)
+			dlW = max(dlW, runewidth.StringWidth(core.Rel(*t.Deadline, today))+2)
 		}
 		if showProject {
 			projW = min(max(projW, runewidth.StringWidth(t.Project)), 18)
@@ -195,21 +262,24 @@ func (m *model) drawList(w, h int) []string {
 		}
 		iconW = max(iconW, n)
 	}
-	inner := w - 2
+	rowW := inner - 1 // la primera columna es la marca de selección
 	cols := 3
 	if showProject {
 		cols = 4
 	}
-	textW := max(inner-(whenW+dlW+projW+iconW+cols+1), 10)
+	textW := max(rowW-(whenW+dlW+projW+iconW+cols+1), 10)
 
 	var rows []string
-	selRow := -1
+	selTask, selRow := -1, 0
 	if m.sel < len(m.taskRows) {
-		selRow = m.taskRows[m.sel]
+		selTask = m.taskRows[m.sel]
 	}
 	for i, r := range m.rows {
 		if r.header != "" {
-			rows = append(rows, st(" "+r.header, accent, true, false, false))
+			if len(rows) > 0 {
+				rows = append(rows, "")
+			}
+			rows = append(rows, groupHeader(r.header, inner))
 			continue
 		}
 		t := m.store.TaskAt(r.pos)
@@ -217,11 +287,26 @@ func (m *model) drawList(w, h int) []string {
 			rows = append(rows, "")
 			continue
 		}
-		sel := focused && i == selRow
-		rows = append(rows, m.taskRow(t, textW, whenW, dlW, projW, iconW, showProject, sel, inner))
+		isSel := i == selTask
+		sel := focused && isSel
+		mark := plain(" ", false)
+		switch {
+		case sel:
+			mark = st("▌", accent, false, false, true)
+		case isSel:
+			mark = st("▌", borderC, false, false, false)
+		}
+		if isSel {
+			selRow = len(rows)
+		}
+		rows = append(rows, mark+m.taskRow(t, textW, whenW, dlW, projW, iconW, showProject, sel, rowW))
 	}
 	visible := h - 2
 	m.scroll = scrollFor(selRow, m.scroll, visible)
+	// Al subir a la primera tarea de un grupo, que se vea también su encabezado.
+	if m.scroll > 0 && m.scroll == selRow && selTask > 0 && m.rows[selTask-1].header != "" {
+		m.scroll--
+	}
 	if m.scroll > len(rows) {
 		m.scroll = 0
 	}
@@ -229,12 +314,52 @@ func (m *model) drawList(w, h int) []string {
 	return box(title, w, h, rows[m.scroll:end], focused)
 }
 
+// groupHeader es el encabezado de un grupo: nombre y una regla hasta el borde.
+func groupHeader(name string, w int) string {
+	c := blueC
+	if strings.HasPrefix(name, "Vencidas") {
+		c = redC
+	}
+	h := st(" "+name+" ", c, true, false, false)
+	return h + rule(w-width(h)-1)
+}
+
+// emptyList es lo que se ve cuando la vista no tiene tareas.
+func (m *model) emptyList(w, h int) []string {
+	dim := func(s string) string { return st(s, dimC, false, false, false) }
+	keyHint := func(k, what string) string { return st(k, accent, true, false, false) + dim("  "+what) }
+	body := []string{
+		st("✓", accent, true, false, false),
+		"",
+		st("Nada pendiente por aquí", grayC, true, false, false),
+		"",
+		keyHint("a", "añadir tarea"),
+	}
+	if m.query != "" {
+		body = []string{
+			st("∅", yellowC, true, false, false),
+			"",
+			st("Sin resultados para «"+truncate(m.query, max(w-24, 4))+"»", grayC, true, false, false),
+			"",
+			keyHint("Esc", "limpiar búsqueda"),
+		}
+	}
+	out := make([]string, max((h-len(body))/3, 1))
+	for _, l := range body {
+		out = append(out, center(l, w))
+	}
+	return out
+}
+
 func (m *model) taskRow(t *core.Task, textW, whenW, dlW, projW, iconW int, showProject, sel bool, inner int) string {
 	today := m.today
 	indent := strings.Repeat(" ", len(strings.ReplaceAll(t.Indent, "\t", "  "))/2*2)
-	check := "○ "
-	if t.Done {
-		check = "✓ "
+	check, checkC := "○ ", prioColor(t.Priority)
+	switch {
+	case t.Done:
+		check, checkC = "✓ ", dimC
+	case t.Priority == 1:
+		check = "◉ "
 	}
 	// Texto + etiquetas; si no caben, las etiquetas se quitan y el texto se corta con «…».
 	var lb strings.Builder
@@ -251,8 +376,8 @@ func (m *model) taskRow(t *core.Task, textW, whenW, dlW, projW, iconW int, showP
 	if t.Done {
 		textFG = dimC
 	}
-	cell := plain(indent, sel) + st(check, prioColor(t.Priority), true, false, sel) +
-		st(text, textFG, false, t.Done, sel) + st(labels, magentaC, false, false, sel)
+	cell := plain(indent, sel) + st(check, checkC, true, false, sel) +
+		st(text, textFG, sel, t.Done, sel) + st(labels, magentaC, false, false, sel)
 
 	sp := plain(" ", sel)
 	var sb strings.Builder
@@ -268,7 +393,7 @@ func (m *model) taskRow(t *core.Task, textW, whenW, dlW, projW, iconW int, showP
 	sb.WriteString(fitBG(when, whenW, sel) + sp)
 	dl := ""
 	if t.Deadline != nil && !t.Done {
-		dl = deadlineText("🎯 "+core.Rel(*t.Deadline, today), *t.Deadline, today, sel)
+		dl = deadlineText("⚑ "+core.Rel(*t.Deadline, today), *t.Deadline, today, sel)
 	}
 	sb.WriteString(fitBG(dl, dlW, sel) + sp)
 	if showProject {
@@ -276,10 +401,10 @@ func (m *model) taskRow(t *core.Task, textW, whenW, dlW, projW, iconW int, showP
 	}
 	var icons string
 	if strings.TrimSpace(t.Description) != "" {
-		icons += plain("¶", sel)
+		icons += st("¶", hintC, false, false, sel)
 	}
 	if len(t.Notes) > 0 {
-		icons += st(fmt.Sprintf("✎%d", len(t.Notes)), dimC, false, false, sel)
+		icons += st(fmt.Sprintf("✎%d", len(t.Notes)), hintC, false, false, sel)
 	}
 	if t.Recurrence != nil {
 		icons += st("↻", cyanC, false, false, sel)
@@ -311,65 +436,80 @@ func relativeText(d, today core.Date, done bool) string {
 func (m *model) drawDetail(w, h int) []string {
 	t := m.selected()
 	if t == nil {
-		return box(" Detalle ", w, h, nil, false)
+		empty := append(make([]string, max((h-2)/3, 1)), center(st("Elige una tarea para ver su detalle", dimC, false, false, false), w-2))
+		return box("Detalle", w, h, empty, false)
 	}
-	return box(" Detalle ", w, h, m.detailLines(t, w-2), false)
+	return box("Detalle", w, h, m.detailLines(t, w-2), false)
 }
 
 // detailLines es el detalle de la tarea: encabezado, campos con etiqueta,
 // descripción y notas, ya ajustado al ancho.
 func (m *model) detailLines(t *core.Task, w int) []string {
 	today := m.today
+	w = max(w-2, 1) // un margen a cada lado
 	dim := func(s string) string { return st(s, dimC, false, false, false) }
-	label := func(s string) string {
-		return dim(s + strings.Repeat(" ", max(14-runewidth.StringWidth(s), 0)))
+	label := func(icon string, c lipgloss.Color, s string) string {
+		return st(icon+" ", c, false, false, false) + dim(s+strings.Repeat(" ", max(11-runewidth.StringWidth(s), 0)))
 	}
-	section := func(s string) string { return st(s, accent, true, false, false) }
-	where := t.Project
+	section := func(s string) string {
+		h := st(s+" ", accent, true, false, false)
+		return h + rule(w-width(h))
+	}
+	where := "▸ " + t.Project
 	if t.Section != nil {
 		where += " › " + *t.Section
 	}
-	lines := []string{st(t.Text, "", true, false, false), dim(where), ""}
+	title := st(t.Text, "", true, t.Done, false)
+	lines := []string{title, st(where, blueC, false, false, false), ""}
 	short := func(d core.Date) string { return strings.SplitN(core.Long(d, today), " · ", 2)[0] }
 	if t.Due != nil {
 		s := short(*t.Due)
 		if t.Time != nil {
 			s += " · " + t.Time.String()
 		}
-		lines = append(lines, label("◷ Fecha")+st(s, relColor(*t.Due, today, t.Done), false, false, false)+dim(relativeText(*t.Due, today, t.Done)))
+		c := relColor(*t.Due, today, t.Done)
+		lines = append(lines, label("◷", c, "Fecha")+st(s, c, false, false, false)+dim(relativeText(*t.Due, today, t.Done)))
 	}
 	if t.Deadline != nil {
-		lines = append(lines, label("🎯 Límite")+deadlineText(short(*t.Deadline), *t.Deadline, today, false)+dim(relativeText(*t.Deadline, today, t.Done)))
+		lines = append(lines, label("⚑", redC, "Límite")+deadlineText(short(*t.Deadline), *t.Deadline, today, false)+dim(relativeText(*t.Deadline, today, t.Done)))
 	}
 	if t.Priority < 4 && t.Priority >= 1 {
 		name := [...]string{"alta", "media", "baja"}[t.Priority-1]
-		lines = append(lines, label("⚑ Prioridad")+st(fmt.Sprintf("p%d · %s", t.Priority, name), prioColor(t.Priority), false, false, false))
+		c := prioColor(t.Priority)
+		lines = append(lines, label("▲", c, "Prioridad")+st(fmt.Sprintf("p%d · %s", t.Priority, name), c, false, false, false))
 	}
 	if t.Recurrence != nil {
-		lines = append(lines, label("↻ Repite")+t.Recurrence.ToES())
+		lines = append(lines, label("↻", cyanC, "Repite")+t.Recurrence.ToES())
 	}
 	if len(t.Labels) > 0 {
 		ls := make([]string, len(t.Labels))
 		for i, l := range t.Labels {
 			ls[i] = "#" + l
 		}
-		lines = append(lines, label("# Etiquetas")+st(strings.Join(ls, "  "), magentaC, false, false, false))
+		lines = append(lines, label("#", magentaC, "Etiquetas")+st(strings.Join(ls, "  "), magentaC, false, false, false))
 	}
 	if t.Done && t.DoneDate != nil {
-		lines = append(lines, label("✓ Hecha")+core.Long(*t.DoneDate, today))
+		lines = append(lines, label("✓", greenC, "Hecha")+core.Long(*t.DoneDate, today))
 	}
 	if strings.TrimSpace(t.Description) != "" {
 		lines = append(lines, "", section("Descripción"))
 		lines = append(lines, strings.Split(t.Description, "\n")...)
 	}
 	if len(t.Notes) > 0 {
-		lines = append(lines, "", section(fmt.Sprintf("Notas (%d)", len(t.Notes))))
+		lines = append(lines, "", section(fmt.Sprintf("Notas · %d", len(t.Notes))))
 		for _, n := range t.Notes {
 			when := ""
 			if n.Date != nil {
-				when = core.Rel(*n.Date, today) + " · "
+				when = core.Rel(*n.Date, today) + "  "
 			}
-			lines = append(lines, dim("› "+when)+n.Text)
+			// Cada renglón de la nota conserva la barra de la izquierda.
+			for j, part := range strings.Split(ansi.Wrap(n.Text, max(w-2-runewidth.StringWidth(when), 8), ""), "\n") {
+				lead := dim(when)
+				if j > 0 {
+					lead = strings.Repeat(" ", runewidth.StringWidth(when))
+				}
+				lines = append(lines, st("│ ", borderC, false, false, false)+lead+part)
+			}
 		}
 	}
 	id := "—"
@@ -383,29 +523,77 @@ func (m *model) detailLines(t *core.Task, w int) []string {
 	lines = append(lines, "", dim(foot))
 	var out []string
 	for _, l := range lines {
-		out = append(out, strings.Split(ansi.Wrap(l, max(w, 1), ""), "\n")...)
+		for _, part := range strings.Split(ansi.Wrap(l, w, ""), "\n") {
+			out = append(out, " "+part)
+		}
 	}
 	return out
 }
 
 // ---------- barra de estado ----------
 
+// statusLine es la barra de abajo: modo, atajos (o un mensaje) y, a la derecha,
+// dónde viven las tareas y la fecha.
 func (m *model) statusLine() string {
-	switch {
-	case m.mode == modeConfirm:
-		name := ""
+	if m.mode == modeConfirm {
+		q := ""
 		if m.inProj != "" {
-			n := m.countOpenAll(m.inProj)
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(redC).Render(fit(fmt.Sprintf(" ¿Eliminar el proyecto «%s» y sus %d tareas? (y/n)", m.inProj, n), m.w))
+			q = fmt.Sprintf("¿Eliminar el proyecto «%s» y sus %d tareas?", m.inProj, m.countOpenAll(m.inProj))
+		} else if t := m.selected(); t != nil {
+			q = fmt.Sprintf("¿Eliminar «%s»?", t.Text)
 		}
-		if t := m.selected(); t != nil {
-			name = t.Text
-		}
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(redC).Render(fit(fmt.Sprintf(" ¿Eliminar «%s»? (y/n)", name), m.w))
-	case m.msg != "":
-		return st(" "+m.msg, yellowC, false, false, false)
+		keys := "  " + st("y", redC, true, false, false) + st(" sí · ", dimC, false, false, false) +
+			st("n", accent, true, false, false) + st(" no", dimC, false, false, false)
+		left := pill("ELIMINAR", redC) + " "
+		return left + st(truncate(q, max(m.w-width(left)-width(keys)-1, 8)), redC, true, false, false) + keys
 	}
-	return st(" a añadir · x completar · e editar · s fecha · i descripción · n nota · d borrar · / buscar · ? ayuda", dimC, false, false, false)
+	name, bg := "NORMAL", accent
+	switch m.mode {
+	case modeInput:
+		name, bg = "ESCRIBIR", blueC
+		if m.inKind == inSearch {
+			name, bg = "BUSCAR", yellowC
+		}
+	case modeHelp:
+		name, bg = "AYUDA", magentaC
+	}
+	left := pill(name, bg) + " "
+	where := "▤ local"
+	whereC := dimC
+	if m.store.Dir() == "" {
+		where = "☁ remoto"
+		if m.store.Notice() != "" {
+			where, whereC = "⚠ sin conexión", yellowC
+		}
+	}
+	right := st(where, whereC, false, false, false) + st("  "+strings.SplitN(core.Long(m.today, m.today), " · ", 2)[0]+" ", hintC, false, false, false)
+	mid := ""
+	if m.msg != "" {
+		mid = st(m.msg, yellowC, false, false, false)
+	} else {
+		hints := [][2]string{{"a", "añadir"}, {"x", "completar"}, {"e", "editar"}, {"s", "fecha"}, {"i", "descripción"},
+			{"n", "nota"}, {"d", "borrar"}, {"/", "buscar"}, {"?", "ayuda"}}
+		// Solo los atajos que caben enteros (y dejando sitio a la derecha si se puede).
+		limit := m.w - width(left) - width(right) - 2
+		if limit < 30 {
+			limit = m.w - width(left)
+		}
+		for i, h := range hints {
+			item := st(h[0], accent, true, false, false) + st(" "+h[1], hintC, false, false, false)
+			if i > 0 {
+				item = st(" · ", borderC, false, false, false) + item
+			}
+			if width(mid)+width(item) > limit {
+				break
+			}
+			mid += item
+		}
+	}
+	room := m.w - width(left)
+	if room-width(mid) < width(right)+2 {
+		return left + fit(mid, max(room, 0))
+	}
+	return left + fit(mid, room-width(right)) + right
 }
 
 // ---------- ventana de captura ----------
@@ -434,13 +622,13 @@ func (m *model) drawInput(frame []string) []string {
 		title = " Buscar "
 	}
 	inner := w - 2
-	lines := []string{m.inputLine(inner - 1), "", "", ""}
+	lines := []string{" " + st("❯ ", accent, true, false, false) + m.inputLine(inner-4), "", "", ""}
 	dim := func(s string) string { return st(s, dimC, false, false, false) }
 	var preview, hint string
 	switch m.inKind {
 	case inAdd, inEdit:
 		preview = m.preview(core.ParseQuick(m.input.text(), m.today), m.inKind == inAdd)
-		hint = dim(`#etiqueta  +Proyecto  p1-p4  mañana 18:00  limit 20/11  cada lunes  \literal`)
+		hint = dim(` #etiqueta  +Proyecto  p1-p4  mañana 18:00  limit 20/11  cada lunes  \literal`)
 	case inSchedule:
 		q := core.ParseQuick(m.input.text(), m.today)
 		var desc []string
@@ -452,31 +640,31 @@ func (m *model) drawInput(frame []string) []string {
 			desc = append(desc, s)
 		}
 		if q.Deadline != nil {
-			desc = append(desc, "🎯 límite "+core.Long(*q.Deadline, m.today))
+			desc = append(desc, "⚑ límite "+core.Long(*q.Deadline, m.today))
 		}
 		switch {
 		case len(m.input.buf) == 0:
-			preview = dim("→ sin fecha")
+			preview = dim(" → sin fecha")
 		case len(desc) > 0:
-			preview = st("→ "+strings.Join(desc, "   "), greenC, false, false, false)
+			preview = st(" → "+strings.Join(desc, "   "), greenC, false, false, false)
 		default:
-			preview = st("→ ?", redC, false, false, false)
+			preview = st(" → no entiendo esa fecha", redC, false, false, false)
 		}
-		hint = dim("Enter guardar · Esc cancelar")
+		hint = dim(" Enter guardar · Esc cancelar")
 	case inNote:
-		hint = dim("Enter guardar · Esc cancelar")
+		hint = dim(" Enter guardar · Esc cancelar")
 	case inSearch:
-		hint = dim("Enter fijar · Esc limpiar")
+		hint = dim(" Enter fijar · Esc limpiar")
 	}
 	lines[2], lines[3] = preview, hint
 	if len(opts) > 0 {
 		sel := min(m.sugg, len(opts)-1)
-		lines = append(lines, dim("Tab completar · ↑↓ elegir"))
+		lines = append(lines, dim(" Tab completar · ↑↓ elegir"))
 		for i, o := range opts {
 			mark := " "
 			if i == sel {
 				mark = "›"
-				lines = append(lines, st(fmt.Sprintf(" %s %s ", mark, o), lipgloss.Color("15"), false, false, true))
+				lines = append(lines, st(" "+mark, accent, true, false, true)+st(" "+o+" ", "", true, false, true))
 			} else {
 				lines = append(lines, st(fmt.Sprintf(" %s %s ", mark, o), grayC, false, false, false))
 			}
@@ -503,7 +691,7 @@ func (m *model) inputLine(avail int) string {
 
 // preview muestra cómo se interpretará la captura rápida.
 func (m *model) preview(q core.Quick, adding bool) string {
-	out := st("→ ", dimC, false, false, false)
+	out := st(" → ", dimC, false, false, false)
 	push := func(s string, c lipgloss.Color) { out += st(s, c, false, false, false) + "  " }
 	due := q.Due
 	if due == nil && adding && m.view.Kind == core.ViewToday {
@@ -517,7 +705,7 @@ func (m *model) preview(q core.Quick, adding bool) string {
 		push(s, greenC)
 	}
 	if q.Deadline != nil {
-		push("🎯 límite "+core.Long(*q.Deadline, m.today), redC)
+		push("⚑ límite "+core.Long(*q.Deadline, m.today), redC)
 	}
 	if q.Priority != nil && *q.Priority < 4 {
 		push(fmt.Sprintf("p%d", *q.Priority), prioColor(*q.Priority))
@@ -563,13 +751,15 @@ func (m *model) drawHelp(frame []string) []string {
 	}
 	var lines []string
 	for _, k := range keys {
-		if k[1] == "" {
-			lines = append(lines, st(" "+k[0], accent, true, false, false))
+		if k[0] == "" {
+			lines = append(lines, "")
+		} else if k[1] == "" {
+			lines = append(lines, st(" "+k[0], accent, true, false, false)+" "+rule(68-runewidth.StringWidth(k[0])))
 		} else {
-			lines = append(lines, st(fmt.Sprintf("   %-14s", k[0]), yellowC, false, false, false)+k[1])
+			lines = append(lines, st(fmt.Sprintf("   %-14s", k[0]), yellowC, true, false, false)+st(k[1], grayC, false, false, false))
 		}
 	}
-	w, h := min(56, m.w), min(len(lines)+2, m.h)
+	w, h := min(74, m.w), min(len(lines)+2, m.h)
 	return overlay(frame, box(" Atajos · cualquier tecla para cerrar ", w, h, lines, true), (m.w-w)/2, (m.h-h)/2)
 }
 

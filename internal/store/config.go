@@ -13,6 +13,7 @@ import (
 //
 //	data_dir = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MiVault/Tareas"
 //	remoto = true          # usar el servidor de servidor.toml (por defecto, si existe)
+//	theme = "aurora"       # o "ansi": los 16 colores de tu terminal
 //
 // El servidor va aparte, en ~/.config/tasktui/servidor.toml (permisos 600, porque
 // guarda el token):
@@ -23,10 +24,12 @@ import (
 // Variables de entorno (tienen prioridad sobre los archivos):
 //   - TASKTUI_DIR: modo local con esa carpeta.
 //   - TASKTUI_SERVER + TASKTUI_TOKEN: modo remoto con ese servidor.
+//   - TASKTUI_THEME: tema de color de la TUI.
 
 type config struct {
 	DataDir *string `toml:"data_dir,omitempty"`
 	Remoto  *bool   `toml:"remoto,omitempty"`
+	Theme   *string `toml:"theme,omitempty"`
 }
 
 // Server es el servidor de tasktui al que conectarse.
@@ -99,6 +102,17 @@ func DataDir() (string, error) {
 		return expand(*c.DataDir), nil
 	}
 	return filepath.Join(home(), ".local/share/tasktui"), nil
+}
+
+// Theme es el tema de color de la TUI: "aurora" (por defecto) o "ansi".
+func Theme() string {
+	if t := os.Getenv("TASKTUI_THEME"); t != "" {
+		return t
+	}
+	if c, err := loadConfig(); err == nil && c.Theme != nil {
+		return *c.Theme
+	}
+	return "aurora"
 }
 
 // SetDataDir guarda la carpeta del modo local.

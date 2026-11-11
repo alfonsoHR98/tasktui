@@ -4,7 +4,7 @@ Los cambios que nota quien usa tasktui. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y las versiones,
 [SemVer](https://semver.org/lang/es/).
 
-## Sin publicar — será la 0.3.0, primera versión pública
+## 0.3.0 — 2026-11-11 (primera versión pública)
 
 ### Interfaz
 - TUI rediseñada: marcos redondeados, tema **Aurora** en color verdadero, barra

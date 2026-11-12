@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -23,6 +25,11 @@ var (
 	magentaC lipgloss.Color
 	cyanC    lipgloss.Color
 	grayC    lipgloss.Color
+
+	// Rampas de tonos vecinos para los degradados. En el tema ansi quedan
+	// vacías y todo se pinta en un solo color.
+	auroraRamp []string // avance: de verde azulado a verde claro
+	fadeRamp   []string // reglas: del borde hacia el fondo
 )
 
 func init() { applyTheme("") }
@@ -34,12 +41,49 @@ func applyTheme(name string) {
 		selBG, accent, onAccent, borderC = "237", "2", "0", "8"
 		dimC, hintC = "8", "7"
 		redC, greenC, yellowC, blueC, magentaC, cyanC, grayC = "1", "2", "3", "4", "5", "6", "7"
+		auroraRamp, fadeRamp = nil, nil
 		return
 	}
 	selBG, accent, onAccent, borderC = "#2A4A3E", "#59C98D", "#0a0a0c", "#3A3A44"
 	dimC, hintC = "#6E6787", "#8FA89F"
 	redC, greenC, yellowC, blueC = "#E0607F", "#59C98D", "#C5D98A", "#9AA8DC"
 	magentaC, cyanC, grayC = "#B06BC4", "#6FD9C4", "#9DBCB1"
+	auroraRamp = []string{"#3FA894", "#59C98D", "#8FE7AB"}
+	fadeRamp = []string{"#4A4A58", "#3A3A44", "#1C1C20"}
+}
+
+// mix interpola dentro de una rampa de colores «#rrggbb»; t va de 0 a 1.
+func mix(stops []string, t float64) lipgloss.Color {
+	t = min(max(t, 0), 1) * float64(len(stops)-1)
+	i := min(int(t), len(stops)-2)
+	f := t - float64(i)
+	a, _ := strconv.ParseUint(stops[i][1:], 16, 32)
+	b, _ := strconv.ParseUint(stops[i+1][1:], 16, 32)
+	ch := func(shift uint) uint64 {
+		x, y := float64(a>>shift&0xff), float64(b>>shift&0xff)
+		return uint64(x + (y-x)*f + 0.5)
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", ch(16), ch(8), ch(0)))
+}
+
+// gradient repite ch a lo largo de n columnas recorriendo la rampa desde la
+// posición from hasta to (de 0 a 1). Sin rampa usa el color fallback.
+func gradient(ch string, n int, stops []string, from, to float64, fallback lipgloss.Color) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(stops) < 2 {
+		return st(strings.Repeat(ch, n), fallback, false, false, false)
+	}
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		t := from
+		if n > 1 {
+			t += (to - from) * float64(i) / float64(n-1)
+		}
+		b.WriteString(st(ch, mix(stops, t), false, false, false))
+	}
+	return b.String()
 }
 
 func prioColor(p int) lipgloss.Color {
@@ -114,12 +158,10 @@ func pill(s string, bg lipgloss.Color) string {
 	return lipgloss.NewStyle().Foreground(onAccent).Background(bg).Bold(true).Render(" " + s + " ")
 }
 
-// rule es una línea horizontal tenue de w columnas.
+// rule es una línea horizontal tenue de w columnas que se desvanece hacia la
+// derecha.
 func rule(w int) string {
-	if w <= 0 {
-		return ""
-	}
-	return st(strings.Repeat("─", w), borderC, false, false, false)
+	return gradient("─", w, fadeRamp, 0, 1, borderC)
 }
 
 // center pone una línea (con ANSI) al centro de w columnas.

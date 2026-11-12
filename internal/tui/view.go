@@ -167,7 +167,9 @@ func (m *model) todayProgress(w int) []string {
 	tag := fmt.Sprintf("%d/%d", done, total)
 	barW := w - 4
 	fill := done * barW / total
-	bar := st(strings.Repeat("━", fill), accent, false, false, false) + st(strings.Repeat("━", barW-fill), borderC, false, false, false)
+	// Lo avanzado recorre la rampa: cuanto más completas, más claro llega.
+	bar := gradient("━", fill, auroraRamp, 0, float64(fill)/float64(max(barW, 1)), accent) +
+		st(strings.Repeat("━", barW-fill), borderC, false, false, false)
 	head := st("  hoy", dimC, true, false, false)
 	return []string{
 		head + strings.Repeat(" ", max(w-2-width(head)-len(tag), 1)) + st(tag, grayC, false, false, false),

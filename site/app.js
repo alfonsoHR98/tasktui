@@ -441,6 +441,7 @@
     const max = document.documentElement.scrollHeight - innerHeight;
     const p = max > 0 ? Math.min(1, scrollY / max) : 0;
     if (bar) { bar.style.width = p * 100 + '%'; pct.textContent = Math.round(p * 100) + '%'; }
+    document.documentElement.style.setProperty('--p', p.toFixed(4)); // la aurora se desplaza con la lectura
     let cur = sections[0];
     for (const s of sections) if (s.getBoundingClientRect().top <= innerHeight * 0.35) cur = s;
     spies.forEach((a) => a.dataset.spy === cur.id ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current'));

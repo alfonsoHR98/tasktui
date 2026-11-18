@@ -20,7 +20,7 @@ Pagar luz mañana p1 #casa +Finanzas cada mes
 | Escribe | Significa |
 |---|---|
 | `#casa` o `@casa` | etiqueta |
-| `+Trabajo` · `+Mis_Cuentas` | proyecto (`_` = espacio; si no existe, se crea) |
+| `+Trabajo` · `+Mis_Cuentas` · `+"Mis Cuentas"` | proyecto (`_` o comillas para los espacios; si ya existe, `+Mis Cuentas` también vale y no importan mayúsculas ni acentos; si no existe, se crea y la vista previa avisa con «proyecto nuevo») |
 | `p1` … `p4` | prioridad |
 | `hoy`, `mañana`, `pasado mañana` · `today`, `tomorrow` | fecha |
 | `lunes` … `domingo` · `monday` … `sunday` | el próximo ese día |

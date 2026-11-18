@@ -49,7 +49,7 @@ tiene una réplica interactiva.
 | Escribe | Significa |
 |---|---|
 | `#casa` | etiqueta |
-| `+Trabajo` · `+Mis_Cuentas` | proyecto (si no existe, se crea) |
+| `+Trabajo` · `+Mis_Cuentas` · `+"Mis Cuentas"` | proyecto (si ya existe, sin importar mayúsculas ni acentos, se usa ese; si no, se crea) |
 | `p1` … `p4` | prioridad |
 | `hoy`, `mañana`, `viernes`, `en 3 días`, `15/11` | fecha |
 | `18:00`, `9am` | hora |
@@ -96,7 +96,8 @@ tasktui server connect http://127.0.0.1:8787    # pide el token
 
 Para usarlo fuera de casa necesitas HTTPS: [docs/docker.md](docs/docker.md)
 explica Caddy, Cloudflare Tunnel y Tailscale, además de respaldos y
-actualizaciones.
+actualizaciones. También puede ir en **Cloudflare Workers + D1**, gratis y sin
+servidor propio: [docs/cloudflare.md](docs/cloudflare.md).
 
 <details>
 <summary>Sin Docker: el servidor como binario</summary>

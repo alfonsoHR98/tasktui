@@ -8,13 +8,13 @@ Todas las rutas salvo `/api/health` piden `Authorization: Bearer <API_TOKEN>`.
 |---|---|---|
 | GET | `/api/tasks?view=today&all=1&q=texto&today=AAAA-MM-DD` | vista agrupada (`today`, `inbox`, `upcoming`, `all`, `+Proyecto`, `#etiqueta`) |
 | GET | `/api/tasks/:id` | una tarea |
-| POST | `/api/tasks` `{"text": "Pagar luz mañana 18:00 p1 +Finanzas limit 20/11", "description": "…"}` | añadir con captura rápida |
-| PATCH | `/api/tasks/:id` `{"text": "viernes p2"}` | cambia solo lo escrito (`"full": true` reemplaza todo; `"no_date"`, `"no_deadline"`, `"description"`) |
+| POST | `/api/tasks` `{"text": "Pagar luz mañana 18:00 p1 +Finanzas limit 20/11", "description": "…"}` | añadir con captura rápida (`"project"` opcional; `"strict_project": true` responde 400 si el proyecto no existe en vez de crearlo) |
+| PATCH | `/api/tasks/:id` `{"text": "viernes p2"}` | cambia solo lo escrito (`"full": true` reemplaza todo; `"no_date"`, `"no_deadline"`, `"description"`, `"project"` para mover, `"strict_project"`) |
 | PUT | `/api/tasks/:id` (tarea completa en JSON) | crear o reemplazar (lo usa la TUI) |
 | POST | `/api/tasks/:id/done` | completar / reabrir |
 | POST | `/api/tasks/:id/notes` `{"text": "…"}` | añadir nota con la fecha de hoy |
 | DELETE | `/api/tasks/:id` | eliminar |
-| GET / POST | `/api/projects` | listar / crear `{"name": "…"}` |
+| GET / POST | `/api/projects` | listar / crear `{"name": "…"}` (si ya hay uno equivalente, sin distinguir mayúsculas ni acentos, devuelve ese con `"existed": true`) |
 | DELETE | `/api/projects?name=…` | elimina el proyecto **y todas sus tareas** (Inbox no se puede) |
 | GET | `/api/labels` | etiquetas con pendientes |
 | GET | `/api/export` · POST `/api/import` | respaldo y carga (conserva ids) |

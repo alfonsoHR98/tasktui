@@ -27,4 +27,23 @@ Sin `MCP_SECRET`, el MCP está apagado (la ruta responde 404).
 - **Claude Code:**
   `claude mcp add --transport http tasktui https://tu-servidor/mcp/<MCP_SECRET>`
 
-Prueba: «¿Qué tengo para hoy?» o «Añade pagar luz mañana 18:00 p1 +Finanzas».
+Prueba: «¿Qué tengo para hoy?» o «Añade pagar luz mañana 18:00 p1 en Finanzas».
+
+## Proyectos sin duplicados
+
+La IA elige el proyecto con el parámetro `project` y el nombre exacto que da
+`list_projects` (con espacios, sin `_`). Por el MCP, `add_task` y `update_task`
+**no crean proyectos**: si el nombre no existe responden con un error que
+sugiere los parecidos, y la IA corrige o, si de verdad es nuevo, llama antes a
+`create_project`. Los nombres se comparan sin mayúsculas, acentos ni `_`.
+
+Comprueba qué versión responde (debe coincidir con la del repo):
+
+```sh
+curl -s -X POST "https://tu-servidor/mcp/<MCP_SECRET>" \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+```
+
+Después de actualizar el servidor, en claude.ai desconecta y vuelve a conectar
+el conector para que recargue la lista de herramientas.

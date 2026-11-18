@@ -14,8 +14,21 @@ import (
 var Version = "0.3.0"
 
 const sintaxis = "Captura rápida: fecha («hoy», «mañana», «viernes», «20/11»), hora («18:00»), " +
-	"prioridad p1 (máxima) a p4, +Proyecto, #etiqueta, fecha límite con «limit 20/11» y repetición " +
-	"(«cada lunes», «cada mes»). Ejemplo: «Pagar luz mañana 18:00 p1 +Finanzas #casa»."
+	"prioridad p1 (máxima) a p4, #etiqueta, fecha límite con «limit 20/11» y repetición " +
+	"(«cada lunes», «cada mes»). Ejemplo: «Pagar luz mañana 18:00 p1 #casa»."
+
+// proyectoMCP explica cómo elegir proyecto sin crear duplicados.
+const proyectoMCP = " Proyecto: pásalo en `project` con el nombre exacto de list_projects " +
+	"(admite espacios: «Niuko Consultores»); no lo escribas en `text`. Si el proyecto no existe, " +
+	"la herramienta falla y sugiere los parecidos: créalo con create_project solo si de verdad es nuevo."
+
+// instrucciones es la guía general del servidor para la IA (initialize).
+const instrucciones = "Tareas personales del usuario (tasktui). Consulta con list_tasks y get_task. " +
+	"Antes de crear o mover tareas, llama a list_projects y usa el nombre exacto en `project` " +
+	"(nunca inventes un proyecto ni lo escribas como «+Proyecto» en el texto). " +
+	"Usa create_project solo si el usuario pide un proyecto nuevo. " +
+	"Las fechas, horas y prioridades van en `text` con captura rápida («mañana 18:00 p1»). " +
+	"Para seguimiento de una tarea existente usa add_note en vez de crear otra."
 
 type obj = map[string]any
 
@@ -33,24 +46,25 @@ func MCPTools() []obj {
 	id := str("Id de la tarea")
 	return []obj{
 		{"name": "list_tasks",
-			"description": "Lista tareas agrupadas. Vistas: today, inbox, upcoming, all, +Proyecto (p. ej. +Niuko Consultores) o #etiqueta. Por defecto solo pendientes.",
+			"description": "Lista tareas agrupadas. Vistas: today, inbox, upcoming, all, un proyecto con «+» delante (p. ej. «+Niuko Consultores») o una etiqueta («#casa»). Por defecto solo pendientes.",
 			"inputSchema": schema(obj{
-				"view":         str("today (por defecto), inbox, upcoming, all, +Proyecto o #etiqueta"),
+				"view":         str("today (por defecto), inbox, upcoming, all, +Nombre del proyecto o #etiqueta"),
 				"query":        str("Texto a buscar"),
 				"include_done": obj{"type": "boolean", "description": "Incluir las completadas"}})},
 		{"name": "get_task", "description": "Devuelve una tarea completa (descripción y notas incluidas).",
 			"inputSchema": schema(obj{"id": id}, "id")},
 		{"name": "add_task",
-			"description": "Crea una tarea. " + sintaxis + " Sin +Proyecto va a Inbox, o al `project` indicado.",
+			"description": "Crea una tarea. " + sintaxis + proyectoMCP + " Sin `project` va a Inbox.",
 			"inputSchema": schema(obj{
-				"text":        str("Título con captura rápida"),
-				"project":     str("Proyecto (opcional)"),
+				"text":        str("Título con captura rápida (fecha, hora, prioridad, #etiqueta)"),
+				"project":     str("Nombre exacto de un proyecto de list_projects (opcional; por defecto Inbox)"),
 				"description": str("Descripción larga (opcional)")}, "text")},
 		{"name": "update_task",
-			"description": "Edita una tarea. `text` cambia solo lo que escribas (p. ej. «viernes p2» solo cambia fecha y prioridad). " + sintaxis,
+			"description": "Edita una tarea. `text` cambia solo lo que escribas (p. ej. «viernes p2» solo cambia fecha y prioridad). " + sintaxis + " Para moverla de proyecto usa `project`.",
 			"inputSchema": schema(obj{
 				"id":          id,
 				"text":        str("Cambios en captura rápida"),
+				"project":     str("Mueve la tarea a este proyecto (nombre exacto de list_projects)"),
 				"description": str("Reemplaza la descripción"),
 				"no_date":     obj{"type": "boolean", "description": "Quita fecha, hora y repetición"},
 				"no_deadline": obj{"type": "boolean", "description": "Quita la fecha límite"}}, "id")},
@@ -63,9 +77,9 @@ func MCPTools() []obj {
 			"inputSchema": schema(obj{"id": id}, "id")},
 		{"name": "list_projects", "description": "Lista los proyectos con su número de tareas pendientes.",
 			"inputSchema": schema(obj{})},
-		{"name": "create_project", "description": "Crea un proyecto.",
+		{"name": "create_project", "description": "Crea un proyecto nuevo. Si ya existe uno equivalente (sin distinguir mayúsculas ni acentos) devuelve ese, con existed=true.",
 			"inputSchema": schema(obj{"name": str("Nombre")}, "name")},
-		{"name": "delete_project", "description": "Elimina un proyecto y todas sus tareas definitivamente. Inbox no se puede eliminar.",
+		{"name": "delete_project", "description": "Elimina un proyecto y todas sus tareas definitivamente. Inbox no se puede eliminar. Confirma con el usuario antes si el proyecto tiene tareas.",
 			"inputSchema": schema(obj{"name": str("Nombre")}, "name")},
 		{"name": "list_labels", "description": "Lista las etiquetas con tareas pendientes.",
 			"inputSchema": schema(obj{})},
@@ -124,7 +138,7 @@ func PlanTool(name string, a obj) (MCPCall, error) {
 		if err != nil {
 			return MCPCall{}, err
 		}
-		b := obj{"text": text}
+		b := obj{"text": text, "strict_project": true}
 		for _, k := range []string{"project", "description"} {
 			if v, ok := argStr(a, k); ok {
 				b[k] = v
@@ -132,8 +146,8 @@ func PlanTool(name string, a obj) (MCPCall, error) {
 		}
 		return MCPCall{"POST", "/api/tasks", b}, nil
 	case "update_task":
-		b := obj{}
-		for _, k := range []string{"text", "description"} {
+		b := obj{"strict_project": true}
+		for _, k := range []string{"text", "description", "project"} {
 			if v, ok := argStr(a, k); ok {
 				b[k] = v
 			}
@@ -216,7 +230,7 @@ func Dispatch(msg map[string]json.RawMessage) RPC {
 			"protocolVersion": v,
 			"capabilities":    obj{"tools": obj{"listChanged": false}},
 			"serverInfo":      obj{"name": "tasktui", "version": Version},
-			"instructions":    "Tareas personales. Usa list_tasks para consultar y add_task con captura rápida para crear.",
+			"instructions":    instrucciones,
 		})
 	case "ping":
 		return reply(obj{})

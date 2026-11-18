@@ -218,34 +218,37 @@ func (d *DB) add(q query, tzMin int, raw []byte) (result, *APIError) {
 		Text, Texto       string
 		Project, Proyecto *string
 		Description       string
+		// StrictProject: no crear proyectos de paso (lo usa el MCP). Si el proyecto
+		// no existe, responde 400 con los parecidos en vez de crear un duplicado.
+		StrictProject bool `json:"strict_project"`
 	}
 	if e := decode(raw, &b, "Se esperaba {\"text\": \"…\"}"); e != nil {
 		return result{}, e
 	}
-	parsed := core.ParseQuick(first(b.Text, b.Texto), today(q, tzMin))
+	ps, err := d.projects()
+	if err != nil {
+		return result{}, internal(err)
+	}
+	parsed := core.ParseQuickIn(first(b.Text, b.Texto), today(q, tzMin), ps)
 	if parsed.Text == "" {
 		return result{}, bad("La tarea necesita texto")
 	}
 	project := core.Inbox
-	if b.Project != nil {
+	if b.Project != nil && strings.TrimSpace(*b.Project) != "" {
 		project = *b.Project
-	} else if b.Proyecto != nil {
+	} else if b.Proyecto != nil && strings.TrimSpace(*b.Proyecto) != "" {
 		project = *b.Proyecto
 	}
 	t := parsed.IntoTask(project)
 	t.Description = strings.TrimSpace(b.Description)
-	var err error
-	if t.Project, err = d.canonicalProject(t.Project); err != nil {
-		return result{}, internal(err)
+	if t.Project, err = resolveProject(ps, t.Project, b.StrictProject); err != nil {
+		return result{}, err.(*APIError)
 	}
 	id, err := d.uniqueID()
 	if err != nil {
 		return result{}, internal(err)
 	}
 	t.ID = &id
-	if err := d.addProject(t.Project); err != nil {
-		return result{}, internal(err)
-	}
 	if err := d.save(t); err != nil {
 		return result{}, internal(err)
 	}
@@ -286,6 +289,14 @@ func (d *DB) edit(q query, tzMin int, id string, raw []byte) (result, *APIError)
 		return f
 	}
 	b.Full, b.NoDate, b.NoDeadline = flag("full", "completo"), flag("no_date", "sin_fecha"), flag("no_deadline")
+	strict := flag("strict_project")
+	var project *string
+	if v := get("project", "proyecto"); v != nil {
+		var s string
+		if json.Unmarshal(v, &s) == nil && strings.TrimSpace(s) != "" {
+			project = &s
+		}
+	}
 	if v := get("description"); v != nil {
 		var s string
 		if json.Unmarshal(v, &s) == nil {
@@ -299,8 +310,13 @@ func (d *DB) edit(q query, tzMin int, id string, raw []byte) (result, *APIError)
 	if t == nil {
 		return result{}, notFound(id)
 	}
+	ps, err := d.projects()
+	if err != nil {
+		return result{}, internal(err)
+	}
+	prevProject := t.Project
 	if b.Text != nil {
-		parsed := core.ParseQuick(*b.Text, today(q, tzMin))
+		parsed := core.ParseQuickIn(*b.Text, today(q, tzMin), ps)
 		if b.Full {
 			if parsed.Text == "" {
 				return result{}, bad("La tarea necesita texto")
@@ -319,16 +335,37 @@ func (d *DB) edit(q query, tzMin int, id string, raw []byte) (result, *APIError)
 	if b.Description != nil {
 		t.Description = strings.TrimSpace(*b.Description)
 	}
-	if t.Project, err = d.canonicalProject(t.Project); err != nil {
-		return result{}, internal(err)
+	if project != nil {
+		t.Project = *project
 	}
-	if err := d.addProject(t.Project); err != nil {
-		return result{}, internal(err)
+	if t.Project != prevProject || project != nil {
+		if t.Project, err = resolveProject(ps, t.Project, strict); err != nil {
+			return result{}, err.(*APIError)
+		}
 	}
 	if err := d.save(t); err != nil {
 		return result{}, internal(err)
 	}
 	return ok(dto(t))
+}
+
+// resolveProject devuelve el nombre canónico del proyecto. Si no existe y strict
+// es true, responde 400 con los proyectos parecidos (para que la IA corrija en vez
+// de crear «Niuko» al lado de «Niuko Consultores»).
+func resolveProject(projects []string, name string, strict bool) (string, error) {
+	p, exists := core.ResolveProject(projects, name)
+	if p == "" {
+		return core.Inbox, nil
+	}
+	if exists || !strict {
+		return p, nil
+	}
+	msg := fmt.Sprintf("No existe el proyecto «%s».", p)
+	if s := core.SuggestProjects(projects, p); len(s) > 0 {
+		msg += fmt.Sprintf(" ¿Quisiste decir «%s»?", strings.Join(s, "», «"))
+	}
+	msg += fmt.Sprintf(" Proyectos: %s. Si de verdad es nuevo, créalo antes con create_project.", strings.Join(projects, ", "))
+	return "", bad(msg)
 }
 
 // put crea o reemplaza la tarea completa con el id de la ruta.
@@ -352,9 +389,6 @@ func (d *DB) put(id string, raw []byte) (result, *APIError) {
 	}
 	var err error
 	if t.Project, err = d.canonicalProject(t.Project); err != nil {
-		return result{}, internal(err)
-	}
-	if err := d.addProject(t.Project); err != nil {
 		return result{}, internal(err)
 	}
 	if err := d.save(t); err != nil {
@@ -449,14 +483,21 @@ func (d *DB) createProject(raw []byte) (result, *APIError) {
 	if e := decode(raw, &b, "Se esperaba {\"name\": \"…\"}"); e != nil {
 		return result{}, e
 	}
-	name := strings.TrimSpace(first(b.Name, b.Nombre))
+	name := core.CleanProjectName(first(b.Name, b.Nombre))
 	if name == "" {
 		return result{}, bad("El proyecto necesita nombre")
+	}
+	ps, err := d.projects()
+	if err != nil {
+		return result{}, internal(err)
+	}
+	if p, found := core.MatchProject(ps, name); found {
+		return ok(map[string]any{"name": p, "existed": true})
 	}
 	if err := d.addProject(name); err != nil {
 		return result{}, internal(err)
 	}
-	return result{201, map[string]string{"name": name}}, nil
+	return result{201, map[string]any{"name": name, "existed": false}}, nil
 }
 
 func (d *DB) deleteProjectAPI(q query) (result, *APIError) {

@@ -312,6 +312,7 @@ func (m *model) completions() (int, []string) {
 	switch prefix {
 	case '+':
 		names = m.store.Projects()
+		partial = core.ProjectKey(partial) // «+ramirez» también sugiere «Ramírez Medellín»
 	case '#', '@':
 		for _, l := range store.Labels(m.store) {
 			names = append(names, l.Name)
@@ -321,7 +322,11 @@ func (m *model) completions() (int, []string) {
 	}
 	var found []string
 	for _, n := range names {
-		if low := strings.ToLower(n); strings.Contains(low, partial) && low != partial {
+		low := strings.ToLower(n)
+		if prefix == '+' {
+			low = core.ProjectKey(n)
+		}
+		if strings.Contains(low, partial) && low != partial {
 			found = append(found, n)
 		}
 	}
@@ -633,7 +638,7 @@ func (m *model) onTaskKey(key string) tea.Cmd {
 func (m *model) submit() {
 	text := m.input.text()
 	today := m.today
-	q := core.ParseQuick(text, today)
+	q := core.ParseQuickIn(text, today, m.store.Projects())
 	id := m.inID
 	switch m.inKind {
 	case inAdd:

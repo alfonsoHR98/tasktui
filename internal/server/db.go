@@ -210,12 +210,14 @@ func (d *DB) projects() ([]string, error) {
 		}
 		return strings.ToLower(ps[i]) < strings.ToLower(ps[j])
 	})
+	// Sin repetir: «Ramírez Medellín» y «ramirez medellin» son el mismo proyecto.
+	seen := map[string]bool{}
 	out := ps[:0]
 	for _, p := range ps {
-		if n := len(out); n > 0 && strings.EqualFold(out[n-1], p) {
-			continue
+		if k := core.ProjectKey(p); !seen[k] {
+			seen[k] = true
+			out = append(out, p)
 		}
-		out = append(out, p)
 	}
 	return out, rows.Err()
 }
@@ -233,18 +235,17 @@ func (d *DB) addProject(name string) error {
 }
 
 // canonicalProject devuelve el nombre del proyecto tal como existe (sin distinguir
-// mayúsculas), o el dado.
+// mayúsculas, acentos ni «_»), o el nombre limpio si es nuevo.
 func (d *DB) canonicalProject(name string) (string, error) {
 	ps, err := d.projects()
 	if err != nil {
 		return "", err
 	}
-	for _, p := range ps {
-		if strings.EqualFold(p, name) {
-			return p, nil
-		}
+	p, _ := core.ResolveProject(ps, name)
+	if p == "" {
+		p = core.Inbox
 	}
-	return name, nil
+	return p, nil
 }
 
 func (d *DB) nextPosition(project string) (float64, error) {
@@ -336,25 +337,55 @@ func (d *DB) deleteProject(name string) (string, int, bool, error) {
 	if err != nil {
 		return "", 0, false, err
 	}
+	// Todas las variantes del nombre (mayúsculas, acentos) son el mismo proyecto.
+	variants, err := d.projectVariants(canon)
+	if err != nil {
+		return "", 0, false, err
+	}
 	tx, err := d.db.Begin()
 	if err != nil {
 		return "", 0, false, err
 	}
 	defer tx.Rollback()
-	rt, err := tx.Exec("DELETE FROM tasks WHERE project = ?1 COLLATE NOCASE", canon)
-	if err != nil {
-		return "", 0, false, err
+	var nt, np int64
+	for _, v := range variants {
+		rt, err := tx.Exec("DELETE FROM tasks WHERE project = ?1", v)
+		if err != nil {
+			return "", 0, false, err
+		}
+		rp, err := tx.Exec("DELETE FROM projects WHERE name = ?1", v)
+		if err != nil {
+			return "", 0, false, err
+		}
+		a, _ := rt.RowsAffected()
+		b, _ := rp.RowsAffected()
+		nt, np = nt+a, np+b
 	}
-	rp, err := tx.Exec("DELETE FROM projects WHERE name = ?1 COLLATE NOCASE", canon)
-	if err != nil {
-		return "", 0, false, err
-	}
-	nt, _ := rt.RowsAffected()
-	np, _ := rp.RowsAffected()
 	if err := tx.Commit(); err != nil {
 		return "", 0, false, err
 	}
 	return canon, int(nt), nt > 0 || np > 0, nil
+}
+
+// projectVariants devuelve los nombres guardados (en tareas o en projects) que son
+// el mismo proyecto que name.
+func (d *DB) projectVariants(name string) ([]string, error) {
+	rows, err := d.db.Query("SELECT name FROM projects UNION SELECT DISTINCT project FROM tasks")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		if core.SameProject(n, name) {
+			out = append(out, n)
+		}
+	}
+	return out, rows.Err()
 }
 
 // Delete borra la tarea; false si no existía.

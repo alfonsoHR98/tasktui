@@ -629,7 +629,7 @@ func (m *model) drawInput(frame []string) []string {
 	var preview, hint string
 	switch m.inKind {
 	case inAdd, inEdit:
-		preview = m.preview(core.ParseQuick(m.input.text(), m.today), m.inKind == inAdd)
+		preview = m.preview(core.ParseQuickIn(m.input.text(), m.today, m.store.Projects()), m.inKind == inAdd)
 		hint = dim(` #etiqueta  +Proyecto  p1-p4  mañana 18:00  limit 20/11  cada lunes  \literal`)
 	case inSchedule:
 		q := core.ParseQuick(m.input.text(), m.today)
@@ -719,7 +719,12 @@ func (m *model) preview(q core.Quick, adding bool) string {
 		push("#"+l, magentaC)
 	}
 	if q.Project != nil {
-		push("▸ "+*q.Project, blueC)
+		if _, exists := core.MatchProject(m.store.Projects(), *q.Project); exists {
+			push("▸ "+*q.Project, blueC)
+		} else {
+			// Avisa antes de guardar: así «+Niuko» no crea otro proyecto sin querer.
+			push("▸ "+*q.Project+" (proyecto nuevo)", yellowC)
+		}
 	}
 	return out
 }

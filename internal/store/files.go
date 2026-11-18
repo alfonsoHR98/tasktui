@@ -362,9 +362,8 @@ func (s *FileStore) Projects() []string {
 }
 
 func (s *FileStore) docIndex(project string) int {
-	p := strings.ToLower(project)
 	for i, d := range s.docs {
-		if strings.ToLower(d.project) == p {
+		if core.SameProject(d.project, project) {
 			return i
 		}
 	}
@@ -372,7 +371,7 @@ func (s *FileStore) docIndex(project string) int {
 }
 
 func (s *FileStore) createDoc(project string) (int, error) {
-	name := strings.Trim(strings.TrimSpace(project), "/")
+	name := strings.Trim(core.CleanProjectName(project), "/")
 	invalid := name == ""
 	for _, c := range strings.Split(name, "/") {
 		if strings.TrimSpace(c) == "" || c == ".." || strings.HasPrefix(c, ".") {
@@ -507,7 +506,7 @@ func (s *FileStore) Update(id string, f func(*core.Task)) error {
 	before := s.TaskAt(p)
 	t := before.Clone()
 	f(t)
-	if strings.EqualFold(t.Project, s.docs[p.A].project) {
+	if core.SameProject(t.Project, s.docs[p.A].project) {
 		t.Project = s.docs[p.A].project
 		// Si cambió la descripción o las notas, se reescribe el bloque.
 		if t.Description != before.Description || !notesEqual(t.Notes, before.Notes) {

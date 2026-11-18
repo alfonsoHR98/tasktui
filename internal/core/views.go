@@ -54,7 +54,7 @@ func ParseView(s string) (View, bool) {
 		return View{Kind: ViewAll}, true
 	}
 	if p, ok := strings.CutPrefix(s, "+"); ok {
-		return View{Kind: ViewProject, Name: strings.ReplaceAll(p, "_", " ")}, true
+		return View{Kind: ViewProject, Name: CleanProjectName(p)}, true
 	}
 	if l, ok := cutPrefix2(s, "#", "@"); ok {
 		return View{Kind: ViewLabel, Name: l}, true
@@ -178,12 +178,12 @@ func BuildView(tasks []Item, projects []string, view View, today Date, showDone 
 
 	switch view.Kind {
 	case ViewInbox, ViewProject:
-		name := strings.ToLower(Inbox)
+		name := Inbox
 		if view.Kind == ViewProject {
-			name = strings.ToLower(view.Name)
+			name = view.Name
 		}
 		for _, it := range tasks {
-			if strings.ToLower(it.Task.Project) == name && visible(it.Task) {
+			if SameProject(it.Task.Project, name) && visible(it.Task) {
 				pushGrouped(&groups, it.Task.Section, it.Key)
 			}
 		}
@@ -244,7 +244,7 @@ func BuildView(tasks []Item, projects []string, view View, today Date, showDone 
 		for _, p := range projects {
 			var keys []int
 			for _, it := range tasks {
-				if it.Task.Project == p && visible(it.Task) {
+				if SameProject(it.Task.Project, p) && visible(it.Task) {
 					keys = append(keys, it.Key)
 				}
 			}

@@ -270,7 +270,10 @@ func (r *RemoteStore) Add(t *core.Task, project string) (string, error) {
 	}
 	id := GenID(ids)
 	t.ID = &id
-	t.Project = project
+	t.Project, _ = core.ResolveProject(r.projects, project)
+	if t.Project == "" {
+		t.Project = core.Inbox
+	}
 	if err := r.put(t); err != nil {
 		return "", err
 	}
@@ -286,6 +289,10 @@ func (r *RemoteStore) Update(id string, f func(*core.Task)) error {
 		return err
 	}
 	f(t)
+	// El mismo proyecto aunque se escriba con otras mayúsculas o sin acentos.
+	if p, ok := core.MatchProject(r.projects, t.Project); ok {
+		t.Project = p
+	}
 	if err := r.put(t); err != nil {
 		return err
 	}

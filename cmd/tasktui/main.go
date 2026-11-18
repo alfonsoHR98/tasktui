@@ -118,7 +118,7 @@ func cmdAdd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			q := core.ParseQuick(strings.Join(args, " "), core.Today())
+			q := core.ParseQuickIn(strings.Join(args, " "), core.Today(), s.Projects())
 			if q.Text == "" {
 				return errors.New("La tarea necesita texto")
 			}
@@ -278,7 +278,7 @@ func cmdEdit(a *app) *cobra.Command {
 				return err
 			}
 			id := args[0]
-			q := core.ParseQuick(strings.Join(args[1:], " "), core.Today())
+			q := core.ParseQuickIn(strings.Join(args[1:], " "), core.Today(), s.Projects())
 			err = s.Update(id, func(t *core.Task) {
 				q.ApplyPartial(t)
 				if noDate {

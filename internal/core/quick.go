@@ -4,14 +4,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 )
 
 // Quick es el resultado de interpretar una captura rápida en español:
 //
 //	Pagar luz mañana p1 #casa +Finanzas cada mes
 //
-// Etiquetas: #etiqueta o @etiqueta; proyecto: +Proyecto (con _ por espacios);
+// Etiquetas: #etiqueta o @etiqueta; proyecto: +Proyecto (con _ por espacios, entre
+// comillas, o con espacios si el proyecto ya existe: ver ParseQuickIn);
 // prioridad p1..p4; fechas (hoy, mañana, lunes, «en 3 días», 15/11, 2026-11-15,
 // también en inglés); hora (18:00, 9am); fecha límite («limit 20/11», «{20/11}»);
 // repetición («cada lunes», «every 2 weeks»). «\palabra» fuerza texto literal.
@@ -105,7 +105,7 @@ func dateOf(toks []string, today Date) (int, Date, bool) {
 	if len(toks) == 0 {
 		return 0, Date{}, false // «{}» o «{ }»: no hay fecha dentro
 	}
-	n, e, ok := trySpecial(toks, 0, today)
+	n, e, ok := trySpecial(toks, 0, today, nil)
 	if !ok || e.kind != eDue {
 		return 0, Date{}, false
 	}
@@ -180,7 +180,7 @@ func dateLit(s string, today Date) (Date, bool) {
 }
 
 // trySpecial intenta interpretar los tokens desde i. Devuelve cuántos consume.
-func trySpecial(toks []string, i int, today Date) (int, effect, bool) {
+func trySpecial(toks []string, i int, today Date, projects []string) (int, effect, bool) {
 	tok := toks[i]
 	low := strings.ToLower(tok)
 	next := func(k int) (string, bool) {
@@ -197,9 +197,9 @@ func trySpecial(toks []string, i int, today Date) (int, effect, bool) {
 		}
 		return 0, no, false
 	}
-	if p, ok := strings.CutPrefix(tok, "+"); ok {
-		if strings.IndexFunc(p, unicode.IsLetter) >= 0 {
-			return 1, effect{kind: eProject, s: strings.ReplaceAll(p, "_", " ")}, true
+	if strings.HasPrefix(tok, "+") {
+		if name, n, ok := projectToken(toks, i, projects); ok {
+			return n, effect{kind: eProject, s: name}, true
 		}
 		return 0, no, false
 	}
@@ -294,8 +294,13 @@ func cutPrefix2(s, a, b string) (string, bool) {
 	return strings.CutPrefix(s, b)
 }
 
-// ParseQuick interpreta una captura rápida.
-func ParseQuick(input string, today Date) Quick {
+// ParseQuick interpreta una captura rápida sin conocer los proyectos existentes.
+func ParseQuick(input string, today Date) Quick { return ParseQuickIn(input, today, nil) }
+
+// ParseQuickIn interpreta una captura rápida. Con los proyectos existentes,
+// «+Niuko Consultores» (con espacio) o «+niuko_consultores» llegan a «Niuko
+// Consultores» en vez de crear un proyecto nuevo.
+func ParseQuickIn(input string, today Date, projects []string) Quick {
 	toks := strings.Fields(input)
 	var q Quick
 	var text []string
@@ -305,7 +310,7 @@ func ParseQuick(input string, today Date) Quick {
 			i++
 			continue
 		}
-		n, e, ok := trySpecial(toks, i, today)
+		n, e, ok := trySpecial(toks, i, today, projects)
 		if !ok {
 			text = append(text, toks[i])
 			i++
@@ -412,7 +417,7 @@ func ToQuick(t *Task, today Date) string {
 	words := strings.Fields(t.Text)
 	var out []string
 	for i, w := range words {
-		if _, _, special := trySpecial(words, i, today); strings.HasPrefix(w, "\\") || special {
+		if _, _, special := trySpecial(words, i, today, nil); strings.HasPrefix(w, "\\") || special {
 			out = append(out, "\\"+w)
 		} else {
 			out = append(out, w)

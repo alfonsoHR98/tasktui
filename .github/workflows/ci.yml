@@ -18,6 +18,21 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  # Worker de Cloudflare (Rust): núcleo + casos compartidos con Go
+  # (testdata/captura.json), y que compile a wasm.
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo test
+      - run: cargo build -p tasktui-worker --target wasm32-unknown-unknown --release
+
   docker:
     runs-on: ubuntu-latest
     steps:

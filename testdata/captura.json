@@ -1,0 +1,22 @@
+{
+  "_doc": "Casos de captura rápida compartidos por Go (internal/core) y Rust (worker/core). Si cambias el parser en uno, este archivo obliga a cambiar el otro. Campos omitidos en un caso no se comprueban; \"project\": null exige que no haya proyecto.",
+  "today": "2026-11-05",
+  "projects": ["Inbox", "Ganbaru", "Niuko Consultores", "Ramírez Medellín"],
+  "cases": [
+    {"in": "Pagar luz mañana 18:00 p1 #casa +Finanzas", "text": "Pagar luz", "project": "Finanzas", "due": "2026-11-06", "time": "18:00", "priority": 1, "labels": ["casa"]},
+    {"in": "Reporte viernes limit 20/11 cada lunes", "text": "Reporte", "project": null, "due": "2026-11-06", "deadline": "2026-11-20"},
+    {"in": "Revisar VPN +Niuko Consultores mañana", "text": "Revisar VPN", "project": "Niuko Consultores", "due": "2026-11-06"},
+    {"in": "Revisar VPN +niuko_consultores", "text": "Revisar VPN", "project": "Niuko Consultores"},
+    {"in": "Revisar VPN +NIUKO consultores p2", "text": "Revisar VPN", "project": "Niuko Consultores", "priority": 2},
+    {"in": "Revisar VPN +\"Niuko Consultores\"", "text": "Revisar VPN", "project": "Niuko Consultores"},
+    {"in": "Revisar VPN +\"Proyecto Nuevo\" hoy", "text": "Revisar VPN", "project": "Proyecto Nuevo", "due": "2026-11-05"},
+    {"in": "Revisar VPN +«Proyecto Nuevo»", "text": "Revisar VPN", "project": "Proyecto Nuevo"},
+    {"in": "Revisar +\"Niuko", "text": "Revisar", "project": "Niuko"},
+    {"in": "Checador +ramirez_medellin", "text": "Checador", "project": "Ramírez Medellín"},
+    {"in": "Checador +Ramirez Medellin", "text": "Checador", "project": "Ramírez Medellín"},
+    {"in": "Laptop +Ganbaru para prestar", "text": "Laptop para prestar", "project": "Ganbaru"},
+    {"in": "Revisar +Niuko Consultores", "known": false, "text": "Revisar Consultores", "project": "Niuko"},
+    {"in": "Sumar 2 +3", "text": "Sumar 2 +3", "project": null},
+    {"in": "\\+Literal texto", "text": "+Literal texto", "project": null}
+  ]
+}

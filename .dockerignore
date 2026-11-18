@@ -3,3 +3,4 @@ ios/
 docs/
 .env
 *.md
+worker/

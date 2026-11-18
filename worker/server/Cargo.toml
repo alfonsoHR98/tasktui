@@ -1,0 +1,17 @@
+[package]
+name = "tasktui-worker"
+description = "Servidor de tasktui: API JSON sobre Cloudflare Workers + D1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tasktui-core.workspace = true
+worker = { version = "0.8.7", features = ["d1"] }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
